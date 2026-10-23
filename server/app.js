@@ -1,3 +1,4 @@
+import path from 'node:path';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { config } from './config.js';
@@ -45,6 +46,11 @@ export function createApp({
   app.use('/api', (req, res) => sendError(res, 404, 'not_found', 'Rota não encontrada.'));
 
   app.use(express.static(publicDir, { index: 'index.html' }));
+  // Link gravado na etiqueta NFC: abre o app, que lê o código do endereço e registra o ponto.
+  app.get('/ponto/:token', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.sendFile(path.join(publicDir, 'index.html'));
+  });
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {

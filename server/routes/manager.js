@@ -5,6 +5,7 @@ import { logAudit } from '../lib/audit.js';
 import { loadTemplate, createChecklistVersion, getSettings, isLateCheckout } from '../lib/checklist.js';
 import { loadDayRows, summarize, failureRanking, historyRow } from '../lib/report.js';
 import { daysCsv, buildBackup } from '../lib/export.js';
+import { getNfcToken, rotateNfcToken, isNfcRequired } from '../lib/nfc.js';
 import { DEFAULT_SECTIONS, DEFAULT_CLEANING_FOCUS } from '../lib/defaults.js';
 import { parseChecklist, parseWeekdayList, parseSettings, parsePost } from '../lib/validate.js';
 
@@ -37,6 +38,7 @@ function settingsResponse(db) {
     bonus_base: Number(s.raw.bonus_base) || 0,
     nome_loja: s.storeName,
     dias_expediente: s.workdays,
+    ponto_exige_nfc: s.raw.ponto_exige_nfc === '1',
   };
 }
 
@@ -177,6 +179,20 @@ export function managerRouter() {
       logAudit(db, req.user.id, 'settings.update', parsed.value, req.app.locals.now());
     })();
     res.json({ settings: settingsResponse(db) });
+  });
+
+  // ---------- Etiqueta NFC ----------
+
+  router.get('/nfc', (req, res) => {
+    const db = req.app.locals.db;
+    res.json({ path: `/ponto/${getNfcToken(db)}`, required: isNfcRequired(db) });
+  });
+
+  router.post('/nfc/rotate', (req, res) => {
+    const db = req.app.locals.db;
+    const token = rotateNfcToken(db);
+    logAudit(db, req.user.id, 'nfc.rotate', null, req.app.locals.now());
+    res.json({ path: `/ponto/${token}`, required: isNfcRequired(db) });
   });
 
   // ---------- Checklist ----------

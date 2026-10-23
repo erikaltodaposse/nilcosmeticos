@@ -93,6 +93,10 @@ export function parseSettings(body) {
     if (!v) return { error: 'O nome da loja precisa ter de 1 a 80 caracteres.' };
     out.nome_loja = v;
   }
+  if ('ponto_exige_nfc' in body) {
+    if (typeof body.ponto_exige_nfc !== 'boolean') return { error: 'Opção da etiqueta inválida.' };
+    out.ponto_exige_nfc = body.ponto_exige_nfc ? '1' : '0';
+  }
   if ('dias_expediente' in body) {
     const days = parseWeekdayList(body.dias_expediente);
     if (days.error) return days;

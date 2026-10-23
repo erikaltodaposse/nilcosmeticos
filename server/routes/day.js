@@ -6,6 +6,7 @@ import { findSnapshotTask } from '../lib/snapshot.js';
 import { getSettings, isWorkday, getDay, ensureDay, markTask, dayView } from '../lib/checklist.js';
 import { ALLOWED_TYPES, MAX_PHOTO_BYTES, sniffImageType, savePhoto, deletePhoto, resolvePhoto } from '../lib/photos.js';
 import { daySummaryText, whatsappLink } from '../lib/summary.js';
+import { isNfcRequired, checkNfcToken } from '../lib/nfc.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -67,6 +68,7 @@ function payload(req, user, date) {
       turno_inicio: settings.shiftStart,
       turno_fim: settings.shiftEnd,
       nome_loja: settings.storeName,
+      nfc_required: isNfcRequired(db),
     },
     day: view,
     summary: summaryText ? { text: summaryText, whatsapp_url: whatsappLink(summaryText) } : null,
@@ -127,7 +129,20 @@ export function dayRouter() {
     return null;
   }
 
-  router.post('/:date/checkin', writable, (req, res) => {
+  // Com a etiqueta exigida, entrada e saída só valem com o código gravado nela. Código enviado errado é sempre recusado.
+  function nfcGate(req, res, next) {
+    const db = req.app.locals.db;
+    const token = req.body?.nfc_token;
+    if (token != null && !checkNfcToken(db, token)) {
+      return sendError(res, 409, 'nfc_invalid', 'Esta etiqueta não é a da loja ou foi trocada. Fale com a gestora.');
+    }
+    if (token == null && isNfcRequired(db)) {
+      return sendError(res, 409, 'nfc_required', 'Encoste o celular na etiqueta da loja para registrar o ponto.');
+    }
+    next();
+  }
+
+  router.post('/:date/checkin', writable, nfcGate, (req, res) => {
     const db = req.app.locals.db;
     if (req.day.check_in_at) return sendError(res, 409, 'already_checked_in', 'A entrada já foi registrada.');
     const at = nowISO(req.app.locals.now());
@@ -139,7 +154,7 @@ export function dayRouter() {
     res.json(payload(req, req.user, req.params.date));
   });
 
-  router.post('/:date/checkout', writable, (req, res) => {
+  router.post('/:date/checkout', writable, nfcGate, (req, res) => {
     const db = req.app.locals.db;
     if (!req.day.check_in_at) return sendError(res, 409, 'not_checked_in', 'Registre a entrada antes da saída.');
     if (req.day.check_out_at) return sendError(res, 409, 'already_checked_out', 'A saída já foi registrada.');

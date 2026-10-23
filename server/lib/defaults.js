@@ -8,6 +8,8 @@ export const DEFAULT_SETTINGS = {
   nome_loja: 'Nil Cosméticos',
   // Dias da semana com expediente (0 = domingo). A loja não abre sábado nem domingo.
   dias_expediente: '1,2,3,4,5',
+  // Ponto por etiqueta NFC (adendo do SPEC, seção 8). Desligado até a gestora gravar a etiqueta.
+  ponto_exige_nfc: '0',
 };
 
 // Índice = dia da semana (0 = domingo).
