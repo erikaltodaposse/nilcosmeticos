@@ -4,6 +4,7 @@ import { todayKey, isDateKey } from '../lib/date.js';
 import { logAudit } from '../lib/audit.js';
 import { loadTemplate, createChecklistVersion, getSettings, isLateCheckout } from '../lib/checklist.js';
 import { loadDayRows, summarize, failureRanking, historyRow } from '../lib/report.js';
+import { daysCsv, buildBackup } from '../lib/export.js';
 import { DEFAULT_SECTIONS, DEFAULT_CLEANING_FOCUS } from '../lib/defaults.js';
 import { parseChecklist, parseWeekdayList, parseSettings, parsePost } from '../lib/validate.js';
 
@@ -132,6 +133,26 @@ export function managerRouter() {
     if (!q) return;
     const rows = loadDayRows(q.db, q.employee.id, q.from, q.to);
     res.json({ employee: { id: q.employee.id, name: q.employee.name }, failures: failureRanking(rows, q.today) });
+  });
+
+  // ---------- Exportação ----------
+
+  router.get('/export.csv', (req, res) => {
+    const q = reportQuery(req, res);
+    if (!q) return;
+    const rows = loadDayRows(q.db, q.employee.id, q.from, q.to);
+    const name = `checkpoint-${q.from ?? 'inicio'}-a-${q.to ?? q.today}.csv`;
+    res.set('Content-Type', 'text/csv; charset=utf-8');
+    res.set('Content-Disposition', `attachment; filename="${name}"`);
+    res.send(daysCsv(rows, { employeeName: q.employee.name, meta: q.settings.meta, isLate: q.isLate }));
+  });
+
+  router.get('/backup.json', (req, res) => {
+    const db = req.app.locals.db;
+    const backup = buildBackup(db, req.app.locals.now());
+    logAudit(db, req.user.id, 'backup.download', null, req.app.locals.now());
+    res.set('Content-Disposition', `attachment; filename="checkpoint-backup-${todayKey(req.app.locals.now())}.json"`);
+    res.json(backup);
   });
 
   // ---------- Configurações ----------

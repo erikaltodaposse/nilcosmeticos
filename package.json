@@ -14,7 +14,8 @@
     "seed": "node server/seed.js",
     "migrate": "node server/db.js",
     "test": "node --test",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "restore": "node server/restore.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
