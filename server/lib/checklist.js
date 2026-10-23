@@ -144,7 +144,7 @@ export async function syncPostsTask(db, dayId, task) {
 /** Devolve o registro do dia, criando-o e congelando o snapshot se ainda não existir. */
 export async function ensureDay(db, userId, date) {
   const existing = await getDay(db, userId, date);
-  if (existing) return existing;
+  if (existing) return upgradeLegacyDay(db, existing);
   const template = await loadTemplate(db, weekdayOf(date));
   if (!template) throw Object.assign(new Error('Não há checklist para este dia da semana.'), { status: 409, code: 'no_checklist' });
   await db.run('INSERT OR IGNORE INTO day_records (user_id, date, snapshot, created_at) VALUES (?, ?, ?, ?)', [
@@ -154,6 +154,25 @@ export async function ensureDay(db, userId, date) {
     nowISO(),
   ]);
   return getDay(db, userId, date);
+}
+
+/**
+ * Dia aberto antes da migração 3 tem as três tarefas "Post 1/2/3" sem roteiro. Se nenhuma delas foi marcada e o
+ * template é o mesmo, o snapshot é refeito com a tarefa de postagens: a migração manteve os ids das outras tarefas,
+ * então o que já foi marcado continua valendo. Dia fechado não muda.
+ */
+async function upgradeLegacyDay(db, day) {
+  if (day.closed_at) return day;
+  const snapshot = JSON.parse(day.snapshot);
+  const legacy = snapshot.sections.flatMap((s) => s.tasks).filter((t) => t.post_slot);
+  if (legacy.length === 0 || postsTask(snapshot)) return day;
+  const checked = new Set((await getChecks(db, day.id)).map((c) => c.task_id));
+  if (legacy.some((t) => checked.has(t.id))) return day;
+  const template = await loadTemplate(db, weekdayOf(day.date));
+  if (!template || template.version_id !== snapshot.version_id) return day;
+  const fresh = JSON.stringify(buildSnapshot(template, await loadPostsFor(db, day.date)));
+  await db.run('UPDATE day_records SET snapshot = ? WHERE id = ?', [fresh, day.id]);
+  return { ...day, snapshot: fresh };
 }
 
 export async function markTask(db, dayId, taskId, at = nowISO()) {

@@ -81,3 +81,23 @@ test('regras de dia vazio', async () => {
   assert.ok(canRewriteSnapshot(empty, [], MONDAY));
   assert.ok(!canRewriteSnapshot(empty, [], '2026-10-27'));
 });
+
+test('dia aberto antes da atualização ganha a tarefa de postagens se nenhum post foi marcado', async () => {
+  const { db } = await makeApp();
+  const uid = await employeeId(db);
+  const day = await ensureDay(db, uid, MONDAY);
+  // Simula o snapshot antigo: a tarefa de postagens volta a ser "Post 1" e ganha "Post 2" e "Post 3".
+  const old = JSON.parse(day.snapshot);
+  const content = old.sections.find((s) => s.tasks.some((t) => t.posts));
+  const postsTaskId = content.tasks[0].id;
+  content.tasks = [1, 2, 3].map((slot) => ({ id: slot === 1 ? postsTaskId : 9000 + slot, text: `Post ${slot}`, points: 10, post_slot: slot }));
+  await db.run('UPDATE day_records SET snapshot = ? WHERE id = ?', [JSON.stringify(old), day.id]);
+  const entrada = old.sections[0].tasks[0].id;
+  await markTask(db, day.id, entrada);
+
+  const upgraded = await ensureDay(db, uid, MONDAY);
+  const tasks = snapshotTasks(JSON.parse(upgraded.snapshot));
+  assert.equal(tasks.filter((t) => t.post_slot).length, 0);
+  assert.equal(tasks.find((t) => t.posts).posts.length, 3);
+  assert.deepEqual((await getChecks(db, day.id)).map((c) => c.task_id), [entrada]);
+});
