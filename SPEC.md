@@ -26,6 +26,7 @@ no primeiro acesso: até trocar, a API só responde `/api/me`, `/api/auth/change
 - Meta diária de 150 pontos (`settings.meta_pontos`). 14 tarefas em 4 blocos somam 150.
 - `pontos_dia` = soma das tarefas marcadas **no snapshot do dia**.
 - `adesão` = pontos totais / (dias trabalhados × meta). Dia trabalhado = `day_records` com pelo menos um check.
+- Expediente de segunda a sexta (`settings.dias_expediente = 1,2,3,4,5`). Sábado e domingo não têm expediente.
 - Faixas: Ouro ≥ 95%, Prata 88–94%, Bronze 80–87%, Abaixo < 80%. Só cálculo e exibição.
 - Snapshot congelado no primeiro registro do dia. Leitura de dia sempre pelo snapshot. Editar checklist cria nova
   versão. Exceção: dia de hoje totalmente vazio pode ter o snapshot regravado.
@@ -47,7 +48,7 @@ no primeiro acesso: até trocar, a API só responde `/api/me`, `/api/auth/change
 
 Cada linha: decisão — justificativa.
 
-1. **Fases 0 e 1 entregues juntas**, com as perguntas abaixo respondidas por suposição — o Erik pediu para seguir sem parar entre as duas; as suposições ficam marcadas para revisão.
+1. **Fases 0 e 1 entregues juntas** — o Erik pediu para seguir sem parar entre as duas; as perguntas foram respondidas depois (seção 7).
 2. **`bcryptjs` em vez de `bcrypt`** (mesmo algoritmo, custo 10) — evita compilação nativa no Windows; `better-sqlite3` já tem binário pronto.
 3. **Sessão em tabela `sessions` no SQLite**, cookie `sid` assinado com `SESSION_SECRET` (via `cookie-parser`) — sobrevive a reinício do servidor sem dependência extra; o banco guarda só o SHA-256 do token.
 4. **Tabela `sessions` acrescentada ao modelo** — o modelo do brief não tinha onde guardar sessão.
@@ -59,9 +60,9 @@ Cada linha: decisão — justificativa.
 10. **Novo PIN precisa ser diferente do atual** — senão a troca obrigatória vira formalidade.
 11. **`MANAGER_PASSWORD` com no mínimo 8 caracteres** — o seed recusa senha curta.
 12. **Seed idempotente**: não sobrescreve gestora, funcionária, configurações nem checklist existentes — pode rodar de novo em produção sem perder dados.
-13. **Checklist semeado para os 7 dias, inclusive domingo**, com foco "loja fechada" — se a loja abrir num domingo, há checklist pronto.
+13. **Checklist semeado para os 7 dias**, mesmo sem expediente no fim de semana — se um dia a loja abrir no sábado, basta incluir o dia em `dias_expediente`; os focos de sábado e domingo do brief ficam guardados.
 14. **Tarefa de limpeza do salão gravada como `Limpeza do foco do dia: {foco}`** — o brief pede o marcador `{foco}` em alguma tarefa; esta é a única que faz sentido.
-15. **`bonus_base` semeado como `0`** — valor não informado (pergunta 1).
+15. **`bonus_base` semeado como `0`** — resposta 1: zero até a gestora configurar.
 16. **Novas variáveis `MANAGER_NAME` e `EMPLOYEE_NAME`** no `.env.example` — o brief pede nome configurável para a funcionária.
 17. **Seções semeadas sem subtítulo** — os subtítulos estão no protótipo, que não chegou.
 18. **`store_id` não incluído** — o brief deixa opcional e a interface é de loja única; uma migração futura acrescenta se precisar.
@@ -69,18 +70,18 @@ Cada linha: decisão — justificativa.
 20. **Títulos em Georgia/serifa do sistema** — sem CDN não dá para carregar fonte externa; a fonte própria pode ir para `public/` depois, se o protótipo usar uma.
 21. **Erros de API sempre `{ error, message }`**, inclusive 404 de rota `/api/*` desconhecida e JSON malformado.
 22. **`GET /api/manager/settings` adiantado da Fase 5** — é leitura simples e permite testar já na Fase 1 que a funcionária não acessa rota de gestora.
+23. **Nova configuração `dias_expediente`** (padrão `1,2,3,4,5`) — resposta 4; a tela Hoje e o check-in vão recusar dia sem expediente.
+24. **Check-in e check-out marcam sozinhos "Bater ponto de entrada" e "Bater ponto de saída"** — resposta 3; essas tarefas não terão botão próprio.
 
 ## 6. Pendências
 
 - **Protótipo `checkpoint-nil/index.html` não foi enviado.** Sem ele faltam: os 19 registros do roteiro de posts (tabela `posts` está vazia), subtítulos das seções e referências de texto e layout. Quando chegar, vai para `referencia/prototipo.html`.
 - Pasta `deploy/` fica para a Fase 7, como no plano do brief.
 
-## 7. Perguntas (máximo 5)
+## 7. Perguntas respondidas (23/10/2026)
 
-Enquanto não houver resposta, sigo com a suposição indicada.
-
-1. **Qual o valor do bônus-base (R$)?** Suposição: `0` até a gestora configurar na tela de configurações.
-2. **Pode enviar o protótipo `checkpoint-nil/index.html`?** Ele traz os 19 posts do roteiro e a referência visual. Suposição: sigo com a paleta do brief e deixo o roteiro vazio.
-3. **"Bater ponto de entrada" e "Bater ponto de saída" devem ser marcados automaticamente pelo check-in e check-out?** Suposição: sim, o botão de ponto marca a tarefa, para não haver dois registros do mesmo fato.
-4. **Como o domingo entra na adesão?** Suposição: domingo só conta como dia trabalhado se houver check-in nele; sem registro, não pesa na média.
-5. **Quando a funcionária falta, a gestora deve poder registrar o dia no lugar dela, ou o dia simplesmente fica sem registro?** Suposição: fica sem registro; a gestora só corrige o passado pela rota de correção com `audit_log`.
+1. **Bônus-base:** `0` até a gestora configurar.
+2. **Protótipo:** será enviado. Até lá o roteiro de posts fica vazio.
+3. **Ponto automático:** sim. Check-in e check-out marcam as tarefas de bater ponto.
+4. **Fim de semana:** não há expediente no sábado nem no domingo. A adesão considera só segunda a sexta.
+5. **Falta da funcionária:** o dia fica sem registro. A gestora só corrige o passado pela rota de correção, com `audit_log`.

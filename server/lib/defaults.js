@@ -6,6 +6,8 @@ export const DEFAULT_SETTINGS = {
   turno_fim: '18:00',
   bonus_base: '0',
   nome_loja: 'Nil Cosméticos',
+  // Dias da semana com expediente (0 = domingo). A loja não abre sábado nem domingo.
+  dias_expediente: '1,2,3,4,5',
 };
 
 // Índice = dia da semana (0 = domingo).

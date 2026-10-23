@@ -56,7 +56,7 @@ Abra `http://localhost:3000`. Para testar no celular, use `http://IP-DA-MAQUINA:
 
 - a gestora, com e-mail e senha do `.env`;
 - a funcionária, com PIN `1234` e troca obrigatória no primeiro acesso;
-- as configurações padrão (meta 150, turno 13:00–18:00);
+- as configurações padrão (meta 150, turno 13:00–18:00, expediente de segunda a sexta);
 - o checklist padrão de 14 tarefas (150 pontos) para cada dia da semana.
 
 Pode rodar de novo sem perder nada: o que já existe não é sobrescrito.
