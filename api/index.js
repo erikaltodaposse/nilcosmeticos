@@ -27,7 +27,9 @@ export default async function handler(req, res) {
     console.error(`[inicialização] ${err.message}`);
     res.statusCode = 500;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ error: 'server_not_configured', message: 'O servidor não está configurado. Veja o README, seção Vercel.' }));
+    // O motivo vai na tela para quem configura não depender do log. As mensagens nunca trazem o valor das chaves.
+    const reason = String(err.message || err).slice(0, 300);
+    res.end(JSON.stringify({ error: 'server_not_configured', message: `O servidor não está configurado: ${reason}` }));
   }
 }
 
