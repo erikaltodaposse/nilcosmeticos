@@ -95,7 +95,8 @@ test('gestora lê as configurações semeadas', async () => {
   await agent.post('/api/auth/login/password').send(MANAGER).expect(200);
   const res = await agent.get('/api/manager/settings');
   assert.equal(res.status, 200);
-  assert.equal(res.body.settings.meta_pontos, '150');
+  assert.equal(res.body.settings.meta_pontos, 150);
+  assert.deepEqual(res.body.settings.dias_expediente, [1, 2, 3, 4, 5]);
 });
 
 test('login bloqueia após 5 tentativas erradas', async () => {
