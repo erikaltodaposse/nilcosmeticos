@@ -2,6 +2,7 @@ import { api } from '../api.js';
 import { h, fill, showError } from '../dom.js';
 import { formatDateKey, formatTime } from '../format.js';
 import { header } from './layout.js';
+import { POST_KINDS } from '../weekdays.js';
 import { compressPhoto } from '../photo.js';
 
 const AUTO_LABEL = {
@@ -9,6 +10,24 @@ const AUTO_LABEL = {
   check_out: 'Marcada ao registrar a saída',
   close: 'Marcada ao fechar o dia',
 };
+
+const LATE_TOLERANCE_MIN = 15;
+const minutes = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+
+/** Ainda não feita e já passou do horário + tolerância. */
+function isOverdue(due, done, nowTime) {
+  return Boolean(due && !done && nowTime && minutes(nowTime) > minutes(due) + LATE_TOLERANCE_MIN);
+}
+
+/** Tarefas com horário em ordem de horário; as sem horário ficam onde estão. */
+function byDueTime(tasks) {
+  const timed = tasks.filter((t) => t.due_time).sort((a, b) => a.due_time.localeCompare(b.due_time));
+  return tasks.map((t) => (t.due_time ? timed.shift() : t));
+}
+
+function chatGptUrl(prompt) {
+  return `https://chatgpt.com/?q=${encodeURIComponent(prompt)}`;
+}
 
 function progressRing(earned, meta) {
   const ratio = meta > 0 ? Math.min(earned / meta, 1) : 0;
@@ -60,7 +79,6 @@ function progressRing(earned, meta) {
 
 export function todayView({ user, date, nfcToken, onLogout }) {
   let state = null;
-  const openPosts = new Set();
   let pending = false;
   let closing = false;
   let nfcCheckout = null; // código lido da etiqueta, aguardando confirmação da saída
@@ -176,43 +194,67 @@ export function todayView({ user, date, nfcToken, onLogout }) {
     return h('p', { class: 'goal-msg' }, `Faltam ${left} pontos para a meta.`);
   }
 
-  function postPanel(slot) {
-    const post = state.posts.find((p) => p.slot === slot);
-    if (!post) {
-      return h('div', { class: 'post-panel' }, h('p', { class: 'muted' }, 'O roteiro deste horário ainda não foi cadastrado pela gestora. Siga a linha de produto do dia.'));
+  async function copyText(text, out) {
+    try {
+      await navigator.clipboard.writeText(text);
+      out.textContent = 'Copiado.';
+    } catch {
+      out.textContent = 'Não deu para copiar. Abra o texto e copie manualmente.';
     }
-    const text = [post.hook, post.caption, post.cta].filter(Boolean).join('\n\n');
+  }
+
+  function promptBlock(label, prompt) {
+    if (!prompt) return null;
     const copied = h('span', { class: 'copied', role: 'status' });
     return h(
       'div',
-      { class: 'post-panel' },
-      post.hook && h('p', {}, h('strong', {}, 'Gancho: '), post.hook),
-      post.caption && h('p', { class: 'caption' }, post.caption),
-      post.cta && h('p', {}, h('strong', {}, 'Chamada: '), post.cta),
+      { class: 'prompt' },
+      h('details', {}, h('summary', {}, label), h('pre', { class: 'prompt-text' }, prompt)),
       h(
-        'button',
-        {
-          class: 'btn btn-small',
-          type: 'button',
-          onclick: async () => {
-            try {
-              await navigator.clipboard.writeText(text);
-              copied.textContent = 'Texto copiado.';
-            } catch {
-              copied.textContent = 'Não deu para copiar. Selecione o texto e copie manualmente.';
-            }
-          },
-        },
-        'Copiar',
+        'div',
+        { class: 'prompt-actions' },
+        h('button', { type: 'button', class: 'btn btn-small', onclick: () => copyText(prompt, copied) }, 'Copiar'),
+        h('a', { class: 'btn btn-small btn-outline', href: chatGptUrl(prompt), target: '_blank', rel: 'noopener' }, 'Abrir no ChatGPT'),
       ),
       copied,
+    );
+  }
+
+  function postCard(post) {
+    const { editable, date: d, now_time: nowTime } = state;
+    const id = `post-${post.id}`;
+    const overdue = editable && isOverdue(post.time, post.done, nowTime);
+    return h(
+      'li',
+      { class: `post-card${post.done ? ' done' : ''}` },
+      h(
+        'div',
+        { class: 'post-head' },
+        h('span', { class: 'tag tag-time' }, post.time),
+        h('span', { class: 'post-kind' }, POST_KINDS[post.kind] ?? post.kind),
+        overdue && h('span', { class: 'tag tag-late' }, 'Atrasada'),
+        post.done && post.late && h('span', { class: 'tag tag-late' }, 'Feita com atraso'),
+      ),
+      post.goal && h('p', { class: 'post-goal' }, post.goal),
+      promptBlock('Prompt da imagem', post.image_prompt_full),
+      promptBlock('Prompt do texto', post.text_prompt),
+      post.done
+        ? h(
+            'p',
+            { class: 'post-done' },
+            `Postada às ${formatTime(post.done_at)}. `,
+            editable && h('button', { id, type: 'button', class: 'link-btn', onclick: () => act(() => api.unmarkPost(d, post.id), id) }, 'Desfazer'),
+          )
+        : editable && h('button', { id, type: 'button', class: 'btn btn-small', onclick: () => act(() => api.markPost(d, post.id), id) }, 'Marcar como postada'),
     );
   }
 
   function taskRow(task) {
     const { editable, date: d } = state;
     const id = `task-${task.id}`;
-    const clickable = editable && !task.auto;
+    const postsDriven = Boolean(task.posts?.length);
+    const clickable = editable && !task.auto && !postsDriven;
+    const overdue = editable && isOverdue(task.due_time, task.done, state.now_time);
     const toggle = () => {
       if (!task.done && task.requires_photo) return pickPhoto(task.id);
       if (task.done && task.has_photo && !window.confirm('Desmarcar esta tarefa apaga a foto enviada. Continuar?')) return;
@@ -220,6 +262,10 @@ export function todayView({ user, date, nfcToken, onLogout }) {
     };
     const meta = [
       h('span', { class: 'pts' }, `+${task.points}`),
+      task.due_time && h('span', { class: 'tag tag-time' }, task.due_time),
+      overdue && h('span', { class: 'tag tag-late' }, 'Atrasada'),
+      task.done && task.late && h('span', { class: 'tag tag-late' }, 'Feita com atraso'),
+      postsDriven && h('span', { class: 'tag tag-soft' }, `${task.posts.filter((p) => p.done).length} de ${task.posts.length} postagens`),
       task.requires_photo && !task.done && h('span', { class: 'tag' }, clickable ? 'Toque para tirar a foto' : 'Exige foto'),
       task.auto && h('span', { class: 'tag tag-soft' }, AUTO_LABEL[task.auto]),
       task.done && task.done_at && h('span', { class: 'when' }, `às ${formatTime(task.done_at)}`),
@@ -249,28 +295,7 @@ export function todayView({ user, date, nfcToken, onLogout }) {
         clickable && h('button', { type: 'button', class: 'link-btn', onclick: () => pickPhoto(task.id) }, 'Trocar foto'),
       );
     }
-    let roteiro = null;
-    if (task.post_slot) {
-      const isOpen = openPosts.has(task.post_slot);
-      roteiro = [
-        h(
-          'button',
-          {
-            type: 'button',
-            class: 'link-btn',
-            'aria-expanded': String(isOpen),
-            onclick: () => {
-              if (isOpen) openPosts.delete(task.post_slot);
-              else openPosts.add(task.post_slot);
-              render(`roteiro-${task.post_slot}`);
-            },
-            id: `roteiro-${task.post_slot}`,
-          },
-          isOpen ? 'Esconder roteiro' : 'Ver roteiro',
-        ),
-        isOpen && postPanel(task.post_slot),
-      ];
-    }
+    const roteiro = postsDriven && h('ol', { class: 'post-list', 'aria-label': 'Postagens do dia' }, task.posts.map(postCard));
     return h('li', { class: 'task-item' }, check, photo, roteiro);
   }
 
@@ -401,7 +426,7 @@ export function todayView({ user, date, nfcToken, onLogout }) {
             ),
           ),
           section.subtitle && h('p', { class: 'muted' }, section.subtitle),
-          h('ul', { class: 'tasks' }, section.tasks.map(taskRow)),
+          h('ul', { class: 'tasks' }, byDueTime(section.tasks).map(taskRow)),
         ),
       ),
       closeCard(),

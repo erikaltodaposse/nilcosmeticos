@@ -214,6 +214,36 @@ a.btn { text-decoration: none; }
 .post-panel p { margin: 0 0 8px; }
 .post-panel .caption { white-space: pre-line; }
 .copied { display: block; margin-top: 6px; font-size: 0.9rem; color: var(--muted-strong); font-weight: 700; }
+.tag-time { background: var(--white); color: var(--berry-700); border: 1px solid var(--line); }
+.tag-late { background: var(--error-bg); color: var(--error-text); }
+
+/* Postagens do dia: uma lista de cartões dentro da tarefa. */
+.post-list { list-style: none; margin: 0 0 12px; padding: 0 0 0 40px; display: grid; gap: 10px; }
+.post-list.flush { padding-left: 0; }
+.post-card { background: var(--blush-100); border-radius: 18px; padding: 12px 14px; }
+.post-card.done { opacity: 0.85; }
+.post-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.9rem; }
+.post-kind { font-weight: 800; color: var(--berry-700); }
+.post-goal { margin: 8px 0; font-weight: 700; }
+.post-done { margin: 8px 0 0; color: var(--ok-text); font-weight: 700; }
+.prompt { margin: 8px 0; }
+.prompt summary { cursor: pointer; font-weight: 700; color: var(--muted-strong); min-height: 44px; display: flex; align-items: center; }
+.prompt-text { white-space: pre-wrap; word-break: break-word; font-family: var(--sans); font-size: 0.95rem; background: var(--white); border-radius: 14px; padding: 10px 12px; margin: 4px 0 8px; }
+.prompt-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.prompt-actions .btn { margin: 0; }
+
+/* Calendário do roteiro. */
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 12px; }
+.cal-head { text-align: center; font-size: 0.8rem; font-weight: 800; color: var(--muted-strong); }
+.cal-day { min-height: 48px; border-radius: 12px; border: 1px solid var(--line); background: var(--white); color: var(--text); font: inherit; font-weight: 700; padding: 4px 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer; }
+.cal-day small { font-size: 0.7rem; font-weight: 700; color: var(--muted-strong); }
+.cal-day.own { background: var(--blush-100); border-color: var(--pink-600); }
+.cal-day.off { opacity: 0.55; }
+.cal-day[aria-pressed="true"] { outline: 3px solid var(--berry-700); outline-offset: 1px; }
+.cal-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cal-nav h3 { margin: 0; text-transform: capitalize; }
+.cal-legend { font-size: 0.85rem; color: var(--muted-strong); margin-top: 8px; }
+
 
 .photo-row { display: flex; align-items: center; gap: 12px; margin: 0 0 12px 40px; }
 .thumb-link { display: inline-block; min-width: 44px; min-height: 44px; border-radius: 16px; }

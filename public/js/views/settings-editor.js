@@ -37,6 +37,13 @@ export function settingsEditor({ setGuard }) {
         ),
       ),
       h(
+        'div',
+        { class: 'field' },
+        h('label', { for: 'estilo_marca' }, 'Estilo da marca (entra no fim de todo prompt de imagem)'),
+        h('textarea', { id: 'estilo_marca', name: 'estilo_marca', rows: '4', maxlength: '600' }, s.estilo_marca ?? ''),
+        h('p', { class: 'field-hint' }, 'Escreva uma vez como as artes devem ficar: cores, luz, fundo, formato. Assim os prompts do roteiro ficam curtos e as imagens saem com a mesma cara.'),
+      ),
+      h(
         'fieldset',
         { class: 'apply' },
         h('legend', {}, 'Ponto pela etiqueta NFC'),
@@ -62,6 +69,7 @@ export function settingsEditor({ setGuard }) {
       bonus_base: form.bonus_base.value.trim() || '0',
       dias_expediente: [...form.querySelectorAll('input[name=dias]:checked')].map((el) => Number(el.value)),
       ponto_exige_nfc: form.ponto_exige_nfc.checked,
+      estilo_marca: form.estilo_marca.value,
     };
     try {
       const res = await busy(form.querySelector('button[type=submit]'), 'Salvando…', () => api.saveSettings(body));

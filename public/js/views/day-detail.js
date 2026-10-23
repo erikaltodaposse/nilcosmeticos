@@ -1,6 +1,7 @@
 import { api } from '../api.js';
 import { h, fill } from '../dom.js';
 import { formatDateKey, formatTime } from '../format.js';
+import { POST_KINDS } from '../weekdays.js';
 
 /** Detalhe de um dia para a gestora: cumpridas com horário, pendentes e fotos ampliáveis. */
 export function dayDetail({ date, userId, onBack }) {
@@ -24,6 +25,9 @@ export function dayDetail({ date, userId, onBack }) {
     const tasks = day.sections.flatMap((s) => s.tasks);
     const done = tasks.filter((t) => t.done).sort((a, b) => a.done_at.localeCompare(b.done_at));
     const pending = tasks.filter((t) => !t.done);
+    const posts = tasks.find((t) => t.posts?.length)?.posts ?? [];
+    const timed = [...tasks.filter((t) => t.done && t.due_time && !t.posts?.length), ...posts.filter((p) => p.done)];
+    const onTime = timed.filter((t) => !t.late).length;
     const status = day.closed_at ? `Fechado às ${formatTime(day.closed_at)}` : data.is_today ? 'Em andamento' : 'Não foi fechado no app';
 
     const photoButton = (t) => {
@@ -60,6 +64,7 @@ export function dayDetail({ date, userId, onBack }) {
           h('div', {}, h('dt', {}, 'Saída'), h('dd', {}, day.check_out_at ? formatTime(day.check_out_at) : 'Não registrada')),
         ),
         day.late_checkout && h('p', { class: 'flag' }, `Saída depois de ${data.settings.turno_fim} com mais de 10 minutos de tolerância.`),
+        timed.length > 0 && h('p', { class: 'muted' }, `No horário: ${onTime} de ${timed.length} tarefas e postagens com horário (tolerância de 15 minutos).`),
       ),
       h(
         'section',
@@ -67,9 +72,22 @@ export function dayDetail({ date, userId, onBack }) {
         h('h2', {}, `Cumpridas (${done.length})`),
         done.length
           ? h('ul', { class: 'detail-list' }, done.map((t) =>
-              h('li', {}, h('span', { class: 'detail-time' }, formatTime(t.done_at)), h('span', { class: 'detail-text' }, t.text, h('span', { class: 'pts' }, ` +${t.points}`)), t.has_photo && photoButton(t)),
+              h('li', {}, h('span', { class: 'detail-time' }, formatTime(t.done_at)), h('span', { class: 'detail-text' }, t.text, h('span', { class: 'pts' }, ` +${t.points}`),
+                t.due_time && h('span', { class: 'muted' }, ` · previsto ${t.due_time}`),
+                t.late && h('span', { class: 'tag tag-late' }, 'com atraso')), t.has_photo && photoButton(t)),
             ))
           : h('p', { class: 'muted' }, 'Nenhuma tarefa marcada neste dia.'),
+      ),
+      posts.length > 0 && h(
+        'section',
+        { class: 'card' },
+        h('h2', {}, `Postagens (${posts.filter((p) => p.done).length} de ${posts.length})`),
+        h('ul', { class: 'detail-list' }, posts.map((p) =>
+          h('li', {},
+            h('span', { class: 'detail-time' }, p.done ? formatTime(p.done_at) : '--:--'),
+            h('span', { class: 'detail-text' }, `${p.time} · ${POST_KINDS[p.kind] ?? p.kind}${p.goal ? `: ${p.goal}` : ''}`,
+              !p.done && h('span', { class: 'tag tag-late' }, 'não feita'),
+              p.late && h('span', { class: 'tag tag-late' }, 'com atraso'))))),
       ),
       h(
         'section',

@@ -129,6 +129,8 @@ export function dashboardView({ today }) {
         tile('Dias trabalhados', String(s.worked_days)),
         tile('Média por dia', `${String(s.average_points).replace('.', ',')} pts`, `meta ${data.meta}`),
         tile('Sem registro', String(s.missing_workdays), 'dias de expediente'),
+        tile('No horário', s.punctuality?.ratio == null ? '–' : formatPercent(s.punctuality.ratio),
+          s.punctuality?.timed ? `${s.punctuality.on_time} de ${s.punctuality.timed} com horário` : 'tarefas com horário'),
         tile('Saídas após tolerância', String(s.late_checkouts)),
         tile('Não fechados no app', String(s.not_closed)),
         tile('Pontos no período', String(s.total_points)),

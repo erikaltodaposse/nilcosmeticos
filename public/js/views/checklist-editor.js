@@ -1,6 +1,6 @@
 import { api } from '../api.js';
 import { h, fill, showError, busy } from '../dom.js';
-import { WEEKDAYS, WEEKDAYS_SHORT, POST_SLOTS, AUTO_LABELS } from '../weekdays.js';
+import { WEEKDAYS, WEEKDAYS_SHORT, AUTO_LABELS } from '../weekdays.js';
 
 let uid = 0;
 const nextId = () => `ce-${++uid}`;
@@ -82,13 +82,19 @@ export function checklistEditor({ setGuard }) {
     const photo = h('input', { type: 'checkbox', id: nextId(), checked: task.requires_photo });
     photo.addEventListener('change', () => { task.requires_photo = photo.checked; markDirty(); });
 
-    const slot = h(
-      'select',
-      { id: nextId() },
-      h('option', { value: '' }, 'Não é post'),
-      Object.entries(POST_SLOTS).map(([v, label]) => h('option', { value: v, selected: String(task.post_slot) === v }, `Post ${v} — ${label}`)),
-    );
-    slot.addEventListener('change', () => { task.post_slot = slot.value ? Number(slot.value) : null; markDirty(); });
+    const due = h('input', { type: 'time', id: nextId(), value: task.due_time ?? '' });
+    due.addEventListener('input', () => { task.due_time = due.value || null; markDirty(); });
+
+    const postsBox = h('input', { type: 'checkbox', id: nextId(), checked: Boolean(task.posts), disabled: Boolean(task.auto) });
+    postsBox.addEventListener('change', () => {
+      task.posts = postsBox.checked;
+      if (task.posts) {
+        task.requires_photo = false;
+        task.due_time = null;
+      }
+      markDirty();
+      render();
+    });
 
     const structural = (fn) => () => { fn(); markDirty(); render(); };
     return h(
@@ -101,9 +107,11 @@ export function checklistEditor({ setGuard }) {
         'div',
         { class: 'edit-row' },
         h('div', { class: 'field field-inline' }, h('label', { for: points.id }, 'Pontos'), points),
-        h('div', { class: 'check-field' }, photo, h('label', { for: photo.id }, 'Exige foto')),
+        !task.posts && h('div', { class: 'field field-inline' }, h('label', { for: due.id }, 'Horário'), due),
+        !task.posts && h('div', { class: 'check-field' }, photo, h('label', { for: photo.id }, 'Exige foto')),
       ),
-      h('div', { class: 'field' }, h('label', { for: slot.id }, 'Roteiro'), slot),
+      !task.auto && h('div', { class: 'check-field' }, postsBox, h('label', { for: postsBox.id }, 'Tarefa de postagens (usa o roteiro do dia)')),
+      task.posts && h('p', { class: 'field-hint' }, 'Os pontos se dividem entre as postagens do roteiro; cada uma tem o próprio horário.'),
       h(
         'div',
         { class: 'row-actions' },
@@ -158,7 +166,7 @@ export function checklistEditor({ setGuard }) {
         {
           type: 'button',
           class: 'btn btn-outline',
-          onclick: structural(() => section.tasks.push({ text: '', points: 5, requires_photo: false, post_slot: null, auto: null })),
+          onclick: structural(() => section.tasks.push({ text: '', points: 5, requires_photo: false, auto: null, due_time: null, posts: false })),
         },
         'Adicionar tarefa',
       ),
@@ -195,7 +203,7 @@ export function checklistEditor({ setGuard }) {
 
     const restore = h('button', { type: 'button', class: 'btn btn-outline' }, 'Restaurar padrão deste dia');
     restore.addEventListener('click', async () => {
-      if (!window.confirm(`Restaurar o checklist padrão de ${WEEKDAYS[weekday].toLowerCase()} (14 tarefas, 150 pontos)? As alterações deste dia serão substituídas.`)) return;
+      if (!window.confirm(`Restaurar o checklist padrão de ${WEEKDAYS[weekday].toLowerCase()} (12 tarefas, 150 pontos)? As alterações deste dia serão substituídas.`)) return;
       try {
         const res = await busy(restore, 'Restaurando…', () => api.restoreChecklist(weekday));
         model = res.checklist;
