@@ -90,8 +90,67 @@ export function settingsEditor({ setGuard }) {
     'div',
     {},
     h('section', { class: 'card' }, h('h2', {}, 'Ajustes da loja'), h('p', { class: 'muted' }, 'Meta, turno, bônus, dias de expediente e ponto pela etiqueta.'), form),
+    managersCard(),
     nfcCard(),
   );
+}
+
+function managersCard() {
+  const card = h('section', { class: 'card', 'aria-labelledby': 'mgr-title' }, h('p', { class: 'boot' }, 'Carregando…'));
+  const error = h('p', { class: 'alert alert-error', role: 'alert', hidden: true });
+  const okMsg = h('p', { class: 'alert alert-ok', role: 'status', hidden: true });
+
+  function render(managers) {
+    const form = h(
+      'form',
+      { novalidate: true, class: 'mt' },
+      h('h3', { class: 'sub-title' }, 'Cadastrar outra gestora'),
+      h('div', { class: 'field' }, h('label', { for: 'mgr-name' }, 'Nome'), h('input', { id: 'mgr-name', name: 'name', type: 'text', maxlength: '60', autocomplete: 'off' })),
+      h('div', { class: 'field' }, h('label', { for: 'mgr-email' }, 'E-mail'), h('input', { id: 'mgr-email', name: 'email', type: 'email', maxlength: '120', autocomplete: 'off' })),
+      h('div', { class: 'field' }, h('label', { for: 'mgr-pass' }, 'Senha (mínimo 8 caracteres)'), h('input', { id: 'mgr-pass', name: 'password', type: 'password', minlength: '8', autocomplete: 'new-password' })),
+      error,
+      okMsg,
+      h('button', { type: 'submit', class: 'btn' }, 'Cadastrar gestora'),
+    );
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      showError(error, '');
+      const body = { name: form.name.value, email: form.email.value, password: form.password.value };
+      try {
+        const res = await busy(form.querySelector('button[type=submit]'), 'Cadastrando…', () => api.createManager(body));
+        render([...managers, res.manager]);
+        showError(okMsg, `${res.manager.name} já pode entrar com o e-mail ${res.manager.email} e a senha cadastrada.`);
+      } catch (err) {
+        showError(error, err.message);
+      }
+    });
+    fill(
+      card,
+      h('h2', { id: 'mgr-title' }, 'Gestoras'),
+      h('p', { class: 'muted' }, 'Quem entra no painel com e-mail e senha. Todas veem e editam tudo.'),
+      h('ul', { class: 'mgr-list' }, managers.map((m) =>
+        h('li', {},
+          h('strong', {}, m.name, m.is_me && h('span', { class: 'muted' }, ' (você)')),
+          h('span', { class: 'mgr-email' }, m.email),
+          !m.is_me && h('button', {
+            type: 'button',
+            class: 'mini mini-danger',
+            onclick: async (e) => {
+              if (!window.confirm(`Remover o acesso de ${m.name}? Ela sai do painel na hora.`)) return;
+              try {
+                await busy(e.currentTarget, 'Removendo…', () => api.removeManager(m.id));
+                render(managers.filter((x) => x.id !== m.id));
+              } catch (err) {
+                showError(error, err.message);
+              }
+            },
+          }, 'Remover')))),
+      form,
+    );
+  }
+
+  api.listManagers().then((res) => render(res.managers)).catch((err) => fill(card, h('p', { class: 'alert alert-error', role: 'alert' }, err.message)));
+  return card;
 }
 
 function nfcCard() {

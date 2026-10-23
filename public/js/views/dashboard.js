@@ -143,7 +143,9 @@ export function dashboardView({ today }) {
   function renderCharts(data) {
     const s = data.summary;
     if (!s.worked_days) {
-      fill(charts);
+      fill(charts, h('section', { class: 'card', 'aria-labelledby': 'chart-wait' },
+        h('h2', { id: 'chart-wait' }, 'Gráficos'),
+        h('p', { class: 'muted' }, 'Os gráficos de pontos, tarefas feitas e horário aparecem aqui assim que a funcionária fechar o primeiro dia deste período (botão "Fechar o dia" no app dela). O dia de hoje entra depois de fechado.')));
       return;
     }
     const hits = s.series.filter((d) => d.points >= data.meta).length;
