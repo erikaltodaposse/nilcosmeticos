@@ -9,13 +9,14 @@ export class ApiError extends Error {
 }
 
 async function call(method, url, body) {
+  const isForm = body instanceof FormData;
   let res;
   try {
     res = await fetch(url, {
       method,
       credentials: 'same-origin',
-      headers: body ? { 'Content-Type': 'application/json' } : {},
-      body: body ? JSON.stringify(body) : undefined,
+      headers: body && !isForm ? { 'Content-Type': 'application/json' } : {},
+      body: isForm ? body : body ? JSON.stringify(body) : undefined,
     });
   } catch {
     throw new ApiError(0, 'network_error', 'Sem conexão com o servidor. Confira a internet e tente de novo.');
@@ -40,4 +41,10 @@ export const api = {
   markTask: (date, taskId) => call('PUT', `/api/day/${date}/tasks/${taskId}`),
   unmarkTask: (date, taskId) => call('DELETE', `/api/day/${date}/tasks/${taskId}`),
   closeDay: (date) => call('POST', `/api/day/${date}/close`),
+  uploadPhoto: (date, taskId, blob) => {
+    const form = new FormData();
+    form.append('photo', blob, 'foto.jpg');
+    return call('POST', `/api/day/${date}/tasks/${taskId}/photo`, form);
+  },
+  photoUrl: (date, taskId, version) => `/api/day/${date}/tasks/${taskId}/photo?v=${encodeURIComponent(version || '')}`,
 };

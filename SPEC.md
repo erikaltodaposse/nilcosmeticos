@@ -76,11 +76,18 @@ Cada linha: decisão — justificativa.
 25. **Coluna `checklist_tasks.auto`** (migração 2: `check_in`, `check_out`, `close`) — identifica as tarefas marcadas pelo sistema sem depender do texto; essas tarefas recusam marcação manual (`409 auto_task`).
 26. **Abrir a tela de hoje já cria o registro do dia e congela o snapshot** — o brief 7.2 inclui "abertura da tela do dia"; dia sem nenhum check não conta como trabalhado.
 27. **Rotas de escrita só aceitam a data de hoje e dia com expediente** (`409 not_today`, `409 no_workday`) — garante a imutabilidade do passado (7.6).
-28. **`POST /api/day/:date/close` adiantado da Fase 3, em versão simples** — exige saída registrada, marca "Fechar o dia" e trava o dia; sem ele o aceite "14 tarefas = 150 pontos" não fecha. A Fase 3 acrescenta a exigência de foto e o resumo para WhatsApp.
-29. **Foto ainda não é exigida para marcar as limpezas** — a exigência e o upload são da Fase 3; a tela já mostra a etiqueta "Exige foto".
-30. **Gestora consulta `GET /api/day/:date` da funcionária** (por `?user_id` ou a primeira funcionária ativa), só leitura — base para o detalhe do dia na Fase 4.
-31. **Faixa de bônus compara o percentual inteiro** (94,9% é Prata) — o brief define as faixas em inteiros (88% a 94%).
-32. **`/api/me` devolve também `today`** — o app usa a data do servidor, no fuso da loja, em vez do relógio do aparelho.
+28. **`POST /api/day/:date/close` exige saída registrada**, marca "Fechar o dia" e trava o dia.
+29. **Gestora consulta `GET /api/day/:date` da funcionária** (por `?user_id` ou a primeira funcionária ativa), só leitura — base para o detalhe do dia na Fase 4.
+30. **Faixa de bônus compara o percentual inteiro** (94,9% é Prata) — o brief define as faixas em inteiros (88% a 94%).
+31. **`/api/me` devolve também `today`** — o app usa a data do servidor, no fuso da loja, em vez do relógio do aparelho.
+
+32. **Enviar a foto marca a tarefa** — tarefa com foto obrigatória recusa `PUT` sem foto (`409 photo_required`); um só gesto para a funcionária.
+33. **Tipo do arquivo conferido pela assinatura do conteúdo**, além do tipo declarado — um `.txt` renomeado para `.jpg` é recusado (`415`).
+34. **Foto nova substitui a anterior e desmarcar apaga o arquivo** — não acumula arquivo órfão; só vale para o dia de hoje, então o histórico não perde foto.
+35. **Pasta do mês (`AAAA-MM`) vem da data do dia**, não do relógio — fotos de um dia ficam juntas.
+36. **Foto servida por `GET /api/day/:date/tasks/:taskId/photo`**, com sessão; funcionária vê as próprias, gestora vê todas.
+37. **Resumo do WhatsApp montado no servidor** (`summary.text` e `summary.whatsapp_url` na resposta do dia) — mesmo texto em qualquer aparelho e testável.
+38. **Fechar o dia passa por uma tela de conferência** com as pendências antes de confirmar — o fechamento é irreversível para a funcionária.
 
 ## 6. Pendências
 

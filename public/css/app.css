@@ -165,3 +165,20 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; line-height: 1.2; marg
 .post-panel p { margin: 0 0 8px; }
 .post-panel .caption { white-space: pre-line; }
 .copied { display: block; margin-top: 6px; font-size: 0.9rem; color: var(--muted-strong); }
+
+/* ---------- Fotos e fechamento ---------- */
+.status:empty { display: none; }
+.status { font-weight: 600; color: var(--wine-700); }
+.photo-row { display: flex; align-items: center; gap: 12px; margin: 0 0 12px 38px; }
+.thumb-link { display: inline-block; min-width: 44px; min-height: 44px; border-radius: 12px; }
+.thumb { display: block; width: 64px; height: 64px; object-fit: cover; border-radius: 12px; border: 1px solid #E6D9D2; }
+.photo-row .link-btn { margin: 0; }
+.big { font-family: var(--serif); font-size: 1.2rem; font-weight: 600; margin: 8px 0; }
+.pending-list { margin: 4px 0 12px; padding-left: 20px; }
+.pending-list li { margin-bottom: 4px; }
+.summary-text-box {
+  white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--sans); font-size: 0.95rem;
+  background: var(--cream); border-radius: 14px; padding: 12px 14px; margin: 12px 0 16px;
+}
+.mt { margin-top: 10px; }
+a.btn { text-decoration: none; }

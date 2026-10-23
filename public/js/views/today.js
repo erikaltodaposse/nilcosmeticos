@@ -2,6 +2,7 @@ import { api } from '../api.js';
 import { h, showError } from '../dom.js';
 import { formatDateKey, formatTime } from '../format.js';
 import { header } from './layout.js';
+import { compressPhoto } from '../photo.js';
 
 const AUTO_LABEL = {
   check_in: 'Marcada ao registrar a entrada',
@@ -45,6 +46,29 @@ export function todayView({ date, onLogout }) {
   let state = null;
   const openPosts = new Set();
   let pending = false;
+  let closing = false;
+  let photoTaskId = null;
+  const status = h('p', { class: 'status', role: 'status' });
+
+  // Um único seletor de arquivo para todas as tarefas com foto; abre a câmera traseira no celular.
+  const fileInput = h('input', { type: 'file', accept: 'image/jpeg,image/png', capture: 'environment', class: 'sr-only', tabindex: '-1', 'aria-hidden': 'true' });
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files[0];
+    fileInput.value = '';
+    if (!file || photoTaskId == null) return;
+    const taskId = photoTaskId;
+    status.textContent = 'Enviando foto…';
+    await act(async () => {
+      const blob = await compressPhoto(file);
+      return api.uploadPhoto(date, taskId, blob);
+    }, `task-${taskId}`);
+    status.textContent = '';
+  });
+
+  function pickPhoto(taskId) {
+    photoTaskId = taskId;
+    fileInput.click();
+  }
 
   const error = h('p', { class: 'alert alert-error', role: 'alert', hidden: true });
   const body = h('div', { class: 'container' }, h('p', { class: 'boot' }, 'Carregando o dia…'));
@@ -151,11 +175,14 @@ export function todayView({ date, onLogout }) {
     const { editable, date: d } = state;
     const id = `task-${task.id}`;
     const clickable = editable && !task.auto;
-    const toggle = () =>
+    const toggle = () => {
+      if (!task.done && task.requires_photo) return pickPhoto(task.id);
+      if (task.done && task.has_photo && !window.confirm('Desmarcar esta tarefa apaga a foto enviada. Continuar?')) return;
       act(() => (task.done ? api.unmarkTask(d, task.id) : api.markTask(d, task.id)), id);
+    };
     const meta = [
       h('span', { class: 'pts' }, `+${task.points}`),
-      task.requires_photo && h('span', { class: 'tag' }, 'Exige foto'),
+      task.requires_photo && !task.done && h('span', { class: 'tag' }, clickable ? 'Toque para tirar a foto' : 'Exige foto'),
       task.auto && h('span', { class: 'tag tag-soft' }, AUTO_LABEL[task.auto]),
       task.done && task.done_at && h('span', { class: 'when' }, `às ${formatTime(task.done_at)}`),
     ];
@@ -173,6 +200,17 @@ export function todayView({ date, onLogout }) {
       h('span', { class: 'box', 'aria-hidden': 'true' }),
       h('span', { class: 'task-body' }, h('span', { class: 'task-text' }, task.text), h('span', { class: 'task-meta' }, meta)),
     );
+    let photo = null;
+    if (task.has_photo) {
+      const src = api.photoUrl(d, task.id, task.done_at);
+      photo = h(
+        'div',
+        { class: 'photo-row' },
+        h('a', { href: src, target: '_blank', rel: 'noopener', class: 'thumb-link', 'aria-label': `Ampliar foto: ${task.text}` },
+          h('img', { src, alt: `Foto: ${task.text}`, class: 'thumb', loading: 'lazy', width: '64', height: '64' })),
+        clickable && h('button', { type: 'button', class: 'link-btn', onclick: () => pickPhoto(task.id) }, 'Trocar foto'),
+      );
+    }
     let roteiro = null;
     if (task.post_slot) {
       const isOpen = openPosts.has(task.post_slot);
@@ -195,21 +233,62 @@ export function todayView({ date, onLogout }) {
         isOpen && postPanel(task.post_slot),
       ];
     }
-    return h('li', { class: 'task-item' }, check, roteiro);
+    return h('li', { class: 'task-item' }, check, photo, roteiro);
   }
 
   function closeCard() {
-    const { day, editable } = state;
+    const { day, editable, summary } = state;
     if (day.closed_at) {
+      const copied = h('span', { class: 'copied', role: 'status' });
       return h(
         'section',
-        { class: 'card' },
-        h('h2', {}, 'Dia fechado'),
-        h('p', { class: 'muted' }, `Fechado às ${formatTime(day.closed_at)} com ${day.points.earned} de ${day.points.meta} pontos. Bom descanso.`),
+        { class: 'card', 'aria-labelledby': 'closed-title' },
+        h('h2', { id: 'closed-title' }, 'Dia fechado'),
+        h('p', { class: 'muted' }, `Fechado às ${formatTime(day.closed_at)}. Envie o resumo para a gestora.`),
+        h('pre', { class: 'summary-text-box' }, summary.text),
+        h('a', { class: 'btn', href: summary.whatsapp_url, target: '_blank', rel: 'noopener' }, 'Enviar resumo no WhatsApp'),
+        h(
+          'button',
+          {
+            class: 'btn btn-outline mt',
+            type: 'button',
+            onclick: async () => {
+              try {
+                await navigator.clipboard.writeText(summary.text);
+                copied.textContent = 'Resumo copiado.';
+              } catch {
+                copied.textContent = 'Não deu para copiar. Selecione o texto acima e copie manualmente.';
+              }
+            },
+          },
+          'Copiar resumo',
+        ),
+        copied,
       );
     }
     if (!editable) return null;
     const ready = Boolean(day.check_out_at);
+    if (closing && ready) {
+      const tasks = day.sections.flatMap((s) => s.tasks);
+      const pendingTasks = tasks.filter((t) => !t.done && t.auto !== 'close');
+      const closeTask = tasks.find((t) => t.auto === 'close');
+      const projected = day.points.earned + (closeTask && !closeTask.done ? closeTask.points : 0);
+      return h(
+        'section',
+        { class: 'card', 'aria-labelledby': 'close-title' },
+        h('h2', { id: 'close-title', tabindex: '-1' }, 'Conferir antes de fechar'),
+        h('p', { class: 'big' }, `${projected} de ${day.points.meta} pontos ao fechar`),
+        pendingTasks.length
+          ? [
+              h('p', { class: 'muted' }, 'Ainda não cumpridas (não somam pontos):'),
+              h('ul', { class: 'pending-list' }, pendingTasks.map((t) => h('li', {}, t.text))),
+            ]
+          : h('p', { class: 'muted' }, 'Todas as tarefas cumpridas.'),
+        h('p', { class: 'muted' }, 'Depois de fechado, o dia não pode mais ser alterado.'),
+        h('button', { class: 'btn', type: 'button', onclick: () => act(() => api.closeDay(date), 'closed-title') }, 'Confirmar e fechar o dia'),
+        h('button', { class: 'btn btn-outline mt', type: 'button', onclick: () => { closing = false; render(); } }, 'Voltar'),
+      );
+    }
     return h(
       'section',
       { class: 'card' },
@@ -217,22 +296,11 @@ export function todayView({ date, onLogout }) {
       h(
         'p',
         { class: 'muted' },
-        ready
-          ? 'Confira as tarefas acima. Depois de fechado, o dia não pode mais ser alterado.'
-          : 'Registre a saída para poder fechar o dia.',
+        ready ? 'Confira o que ficou pendente e envie o resumo para a gestora.' : 'Registre a saída para poder fechar o dia.',
       ),
       h(
         'button',
-        {
-          class: 'btn',
-          type: 'button',
-          disabled: !ready,
-          onclick: () => {
-            if (window.confirm('Fechar o dia agora? Depois disso não dá para alterar as tarefas.')) {
-              act(() => api.closeDay(date));
-            }
-          },
-        },
+        { class: 'btn', type: 'button', disabled: !ready, onclick: () => { closing = true; render('close-title'); } },
         'Fechar o dia',
       ),
     );
@@ -253,6 +321,8 @@ export function todayView({ date, onLogout }) {
     const { day } = state;
     body.replaceChildren(
       error,
+      status,
+      fileInput,
       shiftCard(),
       h('p', { class: 'notice rule' }, h('strong', {}, 'A loja nunca fica sozinha. '), 'Se o fechamento passar das 18h, você permanece até a loja fechar com a gestora.'),
       ...day.sections.map((section, i) =>
