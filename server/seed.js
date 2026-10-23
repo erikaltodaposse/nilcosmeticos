@@ -55,8 +55,8 @@ export function seed(db, env = process.env) {
         'INSERT INTO checklist_sections (version_id, position, title, subtitle) VALUES (?, ?, ?, ?)',
       );
       const insertTask = db.prepare(
-        `INSERT INTO checklist_tasks (section_id, position, text, points, requires_photo, post_slot)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO checklist_tasks (section_id, position, text, points, requires_photo, post_slot, auto)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       );
       for (let weekday = 0; weekday <= 6; weekday++) {
         const versionId = insertVersion.run(weekday, DEFAULT_CLEANING_FOCUS[weekday], now).lastInsertRowid;
@@ -70,6 +70,7 @@ export function seed(db, env = process.env) {
               task.points,
               task.requires_photo ? 1 : 0,
               task.post_slot ?? null,
+              task.auto ?? null,
             );
           });
         });

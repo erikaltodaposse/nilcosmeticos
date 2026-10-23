@@ -27,7 +27,7 @@ export const DEFAULT_SECTIONS = [
     title: 'Chegada',
     subtitle: null,
     tasks: [
-      { text: 'Bater ponto de entrada', points: 10 },
+      { text: 'Bater ponto de entrada', points: 10, auto: 'check_in' },
       { text: 'Abrir a loja: luzes, som, vitrine e balcão', points: 5 },
       { text: 'Postar "Boa tarde" no Grupo VIP', points: 15 },
       { text: 'Conferir caixa, troco e organização do balcão', points: 5 },
@@ -57,8 +57,8 @@ export const DEFAULT_SECTIONS = [
       { text: 'Limpeza final: hall e entrada', points: 20, requires_photo: true },
       { text: 'Fechamento de caixa e relatório do dia', points: 10 },
       { text: 'Apoiar o fechamento da loja com a gestora', points: 10 },
-      { text: 'Bater ponto de saída', points: 10 },
-      { text: 'Fechar o dia no app e enviar o resumo', points: 5 },
+      { text: 'Bater ponto de saída', points: 10, auto: 'check_out' },
+      { text: 'Fechar o dia no app e enviar o resumo', points: 5, auto: 'close' },
     ],
   },
 ];

@@ -4,18 +4,26 @@ import { config } from './config.js';
 import { sendError } from './http.js';
 import { authRouter, meRouter } from './routes/auth.js';
 import { managerRouter } from './routes/manager.js';
+import { dayRouter } from './routes/day.js';
 
 /**
  * Monta o app sem abrir porta, para os testes usarem com supertest.
- * `db` é uma conexão de openDb(); `sessionSecret` assina o cookie.
+ * `db` é uma conexão de openDb(); `sessionSecret` assina o cookie; `now` permite fixar o relógio nos testes.
  */
-export function createApp({ db, sessionSecret, secureCookies = config.isProduction, publicDir = config.publicDir }) {
+export function createApp({
+  db,
+  sessionSecret,
+  secureCookies = config.isProduction,
+  publicDir = config.publicDir,
+  now = () => new Date(),
+}) {
   if (!sessionSecret || sessionSecret.length < 32) {
     throw new Error('SESSION_SECRET precisa ter pelo menos 32 caracteres.');
   }
 
   const app = express();
   app.locals.db = db;
+  app.locals.now = now;
   app.disable('x-powered-by');
   // Em produção o Caddy fica na frente, no mesmo host: confiar só no proxy local para ler o IP real.
   app.set('trust proxy', 'loopback');
@@ -30,6 +38,7 @@ export function createApp({ db, sessionSecret, secureCookies = config.isProducti
 
   app.use('/api/auth', authRouter({ secureCookies }));
   app.use('/api/me', meRouter());
+  app.use('/api/day', dayRouter());
   app.use('/api/manager', managerRouter());
   app.use('/api', (req, res) => sendError(res, 404, 'not_found', 'Rota não encontrada.'));
 

@@ -12,6 +12,7 @@ import {
   verifySecret,
 } from '../lib/auth.js';
 import { requireAuth, sendError } from '../http.js';
+import { todayKey } from '../lib/date.js';
 
 export function authRouter({ secureCookies }) {
   const router = express.Router();
@@ -101,7 +102,7 @@ export function authRouter({ secureCookies }) {
 export function meRouter() {
   const router = express.Router();
   router.get('/', requireAuth({ allowPendingPin: true }), (req, res) => {
-    res.json({ user: publicUser(req.user) });
+    res.json({ user: publicUser(req.user), today: todayKey(req.app.locals.now()) });
   });
   return router;
 }

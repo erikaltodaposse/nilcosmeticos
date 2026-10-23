@@ -38,3 +38,21 @@ export function weekdayOf(key) {
   const [y, m, d] = key.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
+
+const TIME_KEY_FORMAT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: TIME_ZONE,
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/** HH:MM do instante informado, no fuso da loja. */
+export function timeKey(date) {
+  return TIME_KEY_FORMAT.format(date);
+}
+
+/** Minutos desde a meia-noite de um "HH:MM". */
+export function minutesOf(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}

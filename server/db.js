@@ -105,6 +105,13 @@ const MIGRATIONS = [
   CREATE INDEX idx_day_records_date ON day_records(date);
   CREATE INDEX idx_sessions_user ON sessions(user_id);
   `,
+  // Tarefas marcadas pelo próprio sistema (ponto de entrada, ponto de saída, fechamento do dia).
+  `
+  ALTER TABLE checklist_tasks ADD COLUMN auto TEXT CHECK (auto IN ('check_in', 'check_out', 'close'));
+  UPDATE checklist_tasks SET auto = 'check_in' WHERE text = 'Bater ponto de entrada';
+  UPDATE checklist_tasks SET auto = 'check_out' WHERE text = 'Bater ponto de saída';
+  UPDATE checklist_tasks SET auto = 'close' WHERE text = 'Fechar o dia no app e enviar o resumo';
+  `,
 ];
 
 export function migrate(db) {
