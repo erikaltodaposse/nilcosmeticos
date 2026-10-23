@@ -37,19 +37,19 @@ no primeiro acesso: até trocar, a API só responde `/api/me`, `/api/auth/change
 
 ## 4. Arquitetura
 
-- Node 22 LTS (funciona em 20), Express 4, SQLite via `better-sqlite3` em `DATA_DIR/app.db`.
+- Node 22 LTS (funciona em 20), Express 4, SQLite pelo cliente libSQL (`@libsql/client`): Turso na Vercel, arquivo `DATA_DIR/app.db` localmente.
 - Frontend em HTML, CSS e JS puros com ES modules, servidos como estáticos. Sem build, sem CDN.
 - `server/app.js` monta o app sem abrir porta (usado pelos testes); `server/index.js` só liga o servidor.
-- Migrações numeradas em `server/db.js`, controladas por `PRAGMA user_version`. Rodam ao abrir o banco.
+- Migrações numeradas em `server/db.js`, controladas pela tabela `_migrations`. Rodam ao abrir o banco.
 - Datas de negócio só via `server/lib/date.js` (`todayKey`, `nowISO`, `dateKey`, `isDateKey`, `weekdayOf`).
-- Testes com `node:test` + `supertest`, banco `:memory:` por teste.
+- Testes com `node:test` + `supertest`, banco em arquivo temporário por teste.
 
 ## 5. Decisões tomadas
 
 Cada linha: decisão — justificativa.
 
 1. **Fases 0 e 1 entregues juntas** — o Erik pediu para seguir sem parar entre as duas; as perguntas foram respondidas depois (seção 7).
-2. **`bcryptjs` em vez de `bcrypt`** (mesmo algoritmo, custo 10) — evita compilação nativa no Windows; `better-sqlite3` já tem binário pronto.
+2. **`bcryptjs` em vez de `bcrypt`** (mesmo algoritmo, custo 10) — evita compilação nativa no Windows (o `better-sqlite3` depois deu lugar ao libSQL, decisão 63).
 3. **Sessão em tabela `sessions` no SQLite**, cookie `sid` assinado com `SESSION_SECRET` (via `cookie-parser`) — sobrevive a reinício do servidor sem dependência extra; o banco guarda só o SHA-256 do token.
 4. **Tabela `sessions` acrescentada ao modelo** — o modelo do brief não tinha onde guardar sessão.
 5. **Sessão dura 14 dias** — o celular é da funcionária; evita digitar PIN todo dia sem deixar sessão eterna.
@@ -116,11 +116,16 @@ Cada linha: decisão — justificativa.
 60. **Fontes Nunito e Great Vibes servidas pelo próprio app** (`public/fonts`, licença OFL) — sem CDN, como o brief exige; Great Vibes só nos títulos curtos do cabeçalho.
 61. **Logo em `public/img/logo.jpg` (320 px, 23 KB)** e ícones derivados — dentro do limite de 300 KB por imagem.
 
+62. **Deploy na Vercel em vez de VPS** (pedido do Erik, 23/10) — substitui a Fase 7 e a pasta `deploy/`. `api/index.js` exporta o app Express como função; `vercel.json` serve `public/` como estático.
+63. **Banco no Turso via `@libsql/client`** no lugar de `better-sqlite3`: a Vercel não persiste arquivos. Todo acesso ao banco virou assíncrono; transações usam `db.transaction` e `db.batch`. Localmente e nos testes o mesmo cliente abre um arquivo.
+64. **Migrações controladas pela tabela `_migrations`** — o Turso não garante `PRAGMA user_version`.
+65. **Fotos no Vercel Blob** com nome aleatório (UUID); o endereço do Blob nunca vai ao navegador: a rota autenticada busca a imagem e repassa. Só aceita endereços `*.blob.vercel-storage.com`. Localmente continuam em `DATA_DIR/uploads`.
+66. **`trust proxy` ligado na Vercel** (IP real do cliente para o limite de login); fora dela, só `loopback`.
+
 ## 6. Pendências
 
 - **Protótipo `checkpoint-nil/index.html` não foi enviado.** Sem ele faltam: os 19 registros do roteiro de posts (tabela `posts` está vazia), subtítulos das seções e referências de texto e layout. Quando chegar, vai para `referencia/prototipo.html`.
-- Pasta `deploy/` fica para a Fase 7, como no plano do brief.
-- Fase 7 (deploy) ainda não feita.
+- Deploy: falta o Erik criar o banco no Turso, conectar o Blob e cadastrar as variáveis (README, seção Deploy na Vercel).
 
 ## 7. Perguntas respondidas (23/10/2026)
 

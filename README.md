@@ -9,7 +9,7 @@ o brief original está em [`PROMPT.md`](PROMPT.md).
 ## Requisitos
 
 - Node.js 22 LTS (funciona no 20 LTS).
-- Nada mais: o SQLite vem embutido no pacote `better-sqlite3`.
+- Nada mais: o banco é SQLite, aberto pelo pacote `@libsql/client` (sem compilação).
 
 ## Instalação (Windows, PowerShell)
 
@@ -48,6 +48,9 @@ Abra `http://localhost:3000`. Para testar no celular, use `http://IP-DA-MAQUINA:
 | `MANAGER_PASSWORD` | no seed | Senha da gestora, mínimo 8 caracteres. |
 | `MANAGER_NAME` | não | Nome exibido da gestora. Padrão `Gestora`. |
 | `EMPLOYEE_NAME` | não | Nome exibido da funcionária. Padrão `Funcionária`. |
+| `TURSO_DATABASE_URL` | na Vercel | Endereço do banco no Turso (`libsql://...`). Em branco, usa o arquivo `DATA_DIR/app.db`. |
+| `TURSO_AUTH_TOKEN` | na Vercel | Token de acesso ao banco do Turso. |
+| `BLOB_READ_WRITE_TOKEN` | na Vercel | Criado sozinho ao conectar um Vercel Blob ao projeto. Em branco, as fotos ficam em `DATA_DIR/uploads`. |
 | `TZ` | não | Use `America/Manaus`. O código já calcula datas nesse fuso de qualquer jeito. |
 
 ## Seed
@@ -63,7 +66,8 @@ Pode rodar de novo sem perder nada: o que já existe não é sobrescrito.
 
 ## Banco e migrações
 
-O banco fica em `DATA_DIR/app.db`. As migrações rodam sozinhas quando o servidor sobe; para rodar à parte,
+Localmente o banco fica em `DATA_DIR/app.db`; com `TURSO_DATABASE_URL` definida, fica no Turso. O acesso é pelo
+cliente libSQL nos dois casos. As migrações rodam sozinhas quando o servidor sobe; para rodar à parte,
 use `npm run migrate`.
 
 ## Scripts
@@ -101,6 +105,33 @@ No Painel da gestora, o cartão **Exportar** tem:
 
 O teste `tests/export.test.js` confere que painel, ranking, histórico e CSV saem idênticos depois da restauração.
 
-## Deploy
+## Deploy na Vercel
 
-Documentado na Fase 7 (pasta `deploy/`).
+A Vercel não guarda arquivos entre uma requisição e outra, então o banco fica no **Turso** (SQLite na nuvem,
+plano gratuito) e as fotos no **Vercel Blob**. O repositório já traz `vercel.json` e `api/index.js`; não há build.
+
+1. **Banco no Turso.** Crie a conta em turso.tech, crie um banco (região mais próxima: `gru`, São Paulo) e copie
+   o endereço `libsql://...` e um token (botão "Create Token" no painel do banco, ou
+   `turso db show --url <nome>` e `turso db tokens create <nome>` na linha de comando).
+2. **Fotos no Blob.** No projeto da Vercel, abra Storage, crie um Blob store e conecte ao projeto. A variável
+   `BLOB_READ_WRITE_TOKEN` é criada sozinha.
+3. **Variáveis.** Em Settings, Environment Variables, cadastre para Production:
+   - `TURSO_DATABASE_URL` e `TURSO_AUTH_TOKEN` (passo 1);
+   - `SESSION_SECRET` com 64 caracteres aleatórios (por exemplo, a saída de
+     `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`);
+   - `NODE_ENV` = `production`;
+   - `NODEJS_HELPERS` = `0` (deixa o Express ler o corpo das requisições sem interferência da Vercel).
+4. **Seed, uma vez só, do seu computador.** Com o repositório clonado e `npm ci` feito, no PowerShell:
+   ```powershell
+   $env:TURSO_DATABASE_URL="libsql://..."; $env:TURSO_AUTH_TOKEN="..."
+   $env:MANAGER_EMAIL="voce@exemplo.com"; $env:MANAGER_PASSWORD="senha-forte"; $env:EMPLOYEE_NAME="Nome"
+   npm run seed
+   ```
+   O seed cria as tabelas no Turso, a gestora, a funcionária (PIN `1234`, troca no primeiro acesso) e o checklist.
+5. **Redeploy.** Em Deployments, refaça o último deploy para ele ler as variáveis novas. Se faltar alguma, as rotas
+   `/api` respondem `server_not_configured` e o log da função diz qual.
+6. **Etiqueta NFC.** Grave o link só depois, a partir de Ajustes, já no domínio final `https://...vercel.app`.
+
+Observações: cada foto chega comprimida (cerca de 300 KB), bem abaixo do limite de 4,5 MB por requisição da Vercel.
+O limite de tentativas de login é contado por instância da função. O backup JSON do app continua valendo; as
+fotos ficam no Blob e podem ser baixadas pelo painel da Vercel.
