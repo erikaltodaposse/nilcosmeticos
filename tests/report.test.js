@@ -6,21 +6,19 @@ import { buildSnapshot } from '../server/lib/snapshot.js';
 
 // Pontos calculados direto no banco, pelo snapshot de cada dia, sem passar pelo código do painel.
 function pointsFromDb(db) {
-  return db
-    .prepare(
+  return db.all(
       `SELECT d.date, COALESCE(SUM(json_extract(t.value, '$.points')), 0) AS points
        FROM day_records d
        JOIN json_each(d.snapshot, '$.sections') s
        JOIN json_each(s.value, '$.tasks') t
        JOIN task_checks c ON c.day_id = d.id AND c.task_id = json_extract(t.value, '$.id')
        GROUP BY d.date ORDER BY d.date`,
-    )
-    .all();
+  );
 }
 
 test('resumo do período bate com o banco', async () => {
   const { manager, db } = await scenario();
-  const fromDb = pointsFromDb(db);
+  const fromDb = await pointsFromDb(db);
   assert.deepEqual(fromDb.map((r) => r.points), [150, 120, 125, 120, 10]);
 
   const res = await manager.get('/api/manager/summary?from=2026-10-26&to=2026-11-02').expect(200);
@@ -87,7 +85,7 @@ test('gestora abre o dia com fotos; funcionária não acessa o painel', async ()
   await employee.get('/api/manager/failures').expect(403);
 });
 
-test('mesma tarefa com focos diferentes conta como uma só no ranking', () => {
+test('mesma tarefa com focos diferentes conta como uma só no ranking', async () => {
   const template = (focus) => ({
     weekday: 1,
     cleaning_focus: focus,

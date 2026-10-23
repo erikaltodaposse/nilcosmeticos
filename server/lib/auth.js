@@ -31,39 +31,36 @@ export function publicUser(row) {
   };
 }
 
-export function createSession(db, userId, now = new Date()) {
+export async function createSession(db, userId, now = new Date()) {
   const token = crypto.randomBytes(32).toString('base64url');
-  db.prepare('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(
+  await db.run('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)', [
     hashToken(token),
     userId,
     nowISO(now),
     new Date(now.getTime() + SESSION_TTL_MS).toISOString(),
-  );
+  ]);
   return token;
 }
 
-export function findSessionUser(db, token, now = new Date()) {
+export async function findSessionUser(db, token, now = new Date()) {
   if (!token) return null;
-  return (
-    db
-      .prepare(
-        `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
-         WHERE s.token_hash = ? AND s.expires_at > ? AND u.active = 1`,
-      )
-      .get(hashToken(token), nowISO(now)) ?? null
+  return db.get(
+    `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
+     WHERE s.token_hash = ? AND s.expires_at > ? AND u.active = 1`,
+    [hashToken(token), nowISO(now)],
   );
 }
 
-export function destroySession(db, token) {
-  if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashToken(token));
+export async function destroySession(db, token) {
+  if (token) await db.run('DELETE FROM sessions WHERE token_hash = ?', [hashToken(token)]);
 }
 
-export function purgeExpiredSessions(db, now = new Date()) {
-  db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(nowISO(now));
+export async function purgeExpiredSessions(db, now = new Date()) {
+  await db.run('DELETE FROM sessions WHERE expires_at <= ?', [nowISO(now)]);
 }
 
 /** Procura a funcionária ativa dona deste PIN. */
-export function findEmployeeByPin(db, pin) {
-  const employees = db.prepare("SELECT * FROM users WHERE role = 'employee' AND active = 1").all();
+export async function findEmployeeByPin(db, pin) {
+  const employees = await db.all("SELECT * FROM users WHERE role = 'employee' AND active = 1");
   return employees.find((u) => verifySecret(pin, u.pin_hash)) ?? null;
 }

@@ -19,4 +19,9 @@ export const config = {
   port: Number(process.env.PORT) || 3000,
   isProduction: process.env.NODE_ENV === 'production',
   sessionSecret: process.env.SESSION_SECRET || '',
+  // Na Vercel: banco no Turso e fotos no Vercel Blob. Sem essas variáveis, tudo fica em DATA_DIR.
+  tursoUrl: process.env.TURSO_DATABASE_URL || '',
+  tursoToken: process.env.TURSO_AUTH_TOKEN || '',
+  blobToken: process.env.BLOB_READ_WRITE_TOKEN || '',
+  onVercel: Boolean(process.env.VERCEL),
 };

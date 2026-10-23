@@ -2,6 +2,7 @@
 import { snapshotTasks } from './snapshot.js';
 import { dayStats } from './report.js';
 import { timeKey, weekdayOf, nowISO } from './date.js';
+import { schemaVersion } from '../db.js';
 
 const WEEKDAYS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 
@@ -55,43 +56,45 @@ export const BACKUP_TABLES = [
 ];
 export const BACKUP_FORMAT = 'checkpoint-nil-backup';
 
-export function buildBackup(db, now = new Date()) {
+export async function buildBackup(db, now = new Date()) {
   const tables = {};
-  for (const table of BACKUP_TABLES) tables[table] = db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all();
+  for (const table of BACKUP_TABLES) tables[table] = await db.all(`SELECT * FROM ${table} ORDER BY rowid`);
   return {
     format: BACKUP_FORMAT,
-    schema_version: db.pragma('user_version', { simple: true }),
+    schema_version: await schemaVersion(db),
     created_at: nowISO(now),
-    note: 'As fotos ficam em DATA_DIR/uploads e são copiadas pelo deploy/backup.sh, não por este arquivo.',
+    note: 'As fotos ficam no Vercel Blob (ou em DATA_DIR/uploads) e não entram neste arquivo.',
     tables,
   };
 }
 
 /** Restaura um backup num banco vazio (já migrado). Lança erro com mensagem clara se algo não bate. */
-export function restoreBackup(db, backup) {
+export async function restoreBackup(db, backup) {
   if (backup?.format !== BACKUP_FORMAT || typeof backup.tables !== 'object') {
     throw new Error('Arquivo não é um backup do Checkpoint Nil.');
   }
-  const current = db.pragma('user_version', { simple: true });
+  const current = await schemaVersion(db);
   if (backup.schema_version > current) {
     throw new Error(`Backup feito numa versão mais nova do banco (${backup.schema_version}); atualize o código antes.`);
   }
-  const hasData = BACKUP_TABLES.some((t) => db.prepare(`SELECT 1 FROM ${t} LIMIT 1`).get());
-  if (hasData) throw new Error('O banco de destino já tem dados. Restaure num banco vazio.');
+  for (const t of BACKUP_TABLES) {
+    if (await db.get(`SELECT 1 FROM ${t} LIMIT 1`)) throw new Error('O banco de destino já tem dados. Restaure num banco vazio.');
+  }
 
   const counts = {};
-  db.transaction(() => {
-    for (const table of BACKUP_TABLES) {
-      const rows = backup.tables[table] ?? [];
-      const columns = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
-      for (const row of rows) {
-        const keys = Object.keys(row).filter((k) => columns.has(k));
-        db.prepare(`INSERT INTO ${table} (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`).run(
-          ...keys.map((k) => row[k]),
-        );
-      }
-      counts[table] = rows.length;
+  const statements = [];
+  for (const table of BACKUP_TABLES) {
+    const rows = backup.tables[table] ?? [];
+    const columns = new Set((await db.all(`PRAGMA table_info(${table})`)).map((c) => c.name));
+    for (const row of rows) {
+      const keys = Object.keys(row).filter((k) => columns.has(k));
+      statements.push([
+        `INSERT INTO ${table} (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`,
+        keys.map((k) => row[k]),
+      ]);
     }
-  })();
+    counts[table] = rows.length;
+  }
+  await db.batch(statements);
   return counts;
 }

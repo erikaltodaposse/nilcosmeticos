@@ -1,5 +1,5 @@
 import express from 'express';
-import { requireRole, sendError } from '../http.js';
+import { ah, requireRole, sendError } from '../http.js';
 import { todayKey, isDateKey } from '../lib/date.js';
 import { logAudit } from '../lib/audit.js';
 import { loadTemplate, createChecklistVersion, getSettings, isLateCheckout } from '../lib/checklist.js';
@@ -9,8 +9,8 @@ import { getNfcToken, rotateNfcToken, isNfcRequired } from '../lib/nfc.js';
 import { DEFAULT_SECTIONS, DEFAULT_CLEANING_FOCUS } from '../lib/defaults.js';
 import { parseChecklist, parseWeekdayList, parseSettings, parsePost } from '../lib/validate.js';
 
-function templateResponse(db, weekday) {
-  const t = loadTemplate(db, weekday);
+async function templateResponse(db, weekday) {
+  const t = await loadTemplate(db, weekday);
   return {
     weekday,
     version: t?.version ?? null,
@@ -29,8 +29,8 @@ function templateResponse(db, weekday) {
   };
 }
 
-function settingsResponse(db) {
-  const s = getSettings(db);
+async function settingsResponse(db) {
+  const s = await getSettings(db);
   return {
     meta_pontos: s.meta,
     turno_inicio: s.shiftStart,
@@ -42,8 +42,8 @@ function settingsResponse(db) {
   };
 }
 
-/** Lê ?from, ?to e ?user_id. Sem from/to, o período é tudo. */
-function reportQuery(req, res) {
+/** Lê ?from, ?to e ?user_id. Sem from/to, o período é tudo. Responde o erro e devolve null se algo for inválido. */
+async function reportQuery(req, res) {
   const db = req.app.locals.db;
   const { from, to } = req.query;
   for (const v of [from, to]) {
@@ -58,13 +58,13 @@ function reportQuery(req, res) {
   }
   const id = Number(req.query.user_id);
   const employee = Number.isInteger(id) && id > 0
-    ? db.prepare("SELECT * FROM users WHERE id = ? AND role = 'employee'").get(id)
-    : db.prepare("SELECT * FROM users WHERE role = 'employee' AND active = 1 ORDER BY id LIMIT 1").get();
+    ? await db.get("SELECT * FROM users WHERE id = ? AND role = 'employee'", [id])
+    : await db.get("SELECT * FROM users WHERE role = 'employee' AND active = 1 ORDER BY id LIMIT 1");
   if (!employee) {
     sendError(res, 404, 'employee_not_found', 'Nenhuma funcionária cadastrada.');
     return null;
   }
-  const settings = getSettings(db);
+  const settings = await getSettings(db);
   return {
     db,
     employee,
@@ -96,114 +96,114 @@ export function managerRouter() {
 
   // ---------- Painel ----------
 
-  router.get('/summary', (req, res) => {
-    const q = reportQuery(req, res);
+  router.get('/summary', ah(async (req, res) => {
+    const q = await reportQuery(req, res);
     if (!q) return;
-    const rows = loadDayRows(q.db, q.employee.id, q.from, q.to);
-    // Sem data inicial, as faltas contam desde o cadastro da funcionária.
-    const from = q.from ?? q.employee.created_at.slice(0, 10);
+    const rows = await loadDayRows(q.db, q.employee.id, q.from, q.to);
+    const bonusBase = Number(q.settings.raw.bonus_base) || 0;
     res.json({
       employee: { id: q.employee.id, name: q.employee.name },
       period: { from: q.from, to: q.to, today: q.today },
       meta: q.settings.meta,
-      bonus_base: Number(q.settings.raw.bonus_base) || 0,
+      bonus_base: bonusBase,
       summary: summarize(rows, {
         today: q.today,
         meta: q.settings.meta,
-        bonusBase: Number(q.settings.raw.bonus_base) || 0,
+        bonusBase,
         workdays: q.settings.workdays,
-        from,
+        // Sem data inicial, as faltas contam desde o cadastro da funcionária.
+        from: q.from ?? q.employee.created_at.slice(0, 10),
         to: q.to,
         isLate: q.isLate,
       }),
     });
-  });
+  }));
 
-  router.get('/days', (req, res) => {
-    const q = reportQuery(req, res);
+  router.get('/days', ah(async (req, res) => {
+    const q = await reportQuery(req, res);
     if (!q) return;
-    const rows = loadDayRows(q.db, q.employee.id, q.from, q.to);
+    const rows = await loadDayRows(q.db, q.employee.id, q.from, q.to);
     res.json({
       employee: { id: q.employee.id, name: q.employee.name },
       meta: q.settings.meta,
       days: rows.map((r) => historyRow(r, q)).reverse(),
     });
-  });
+  }));
 
-  router.get('/failures', (req, res) => {
-    const q = reportQuery(req, res);
+  router.get('/failures', ah(async (req, res) => {
+    const q = await reportQuery(req, res);
     if (!q) return;
-    const rows = loadDayRows(q.db, q.employee.id, q.from, q.to);
+    const rows = await loadDayRows(q.db, q.employee.id, q.from, q.to);
     res.json({ employee: { id: q.employee.id, name: q.employee.name }, failures: failureRanking(rows, q.today) });
-  });
+  }));
 
   // ---------- Exportação ----------
 
-  router.get('/export.csv', (req, res) => {
-    const q = reportQuery(req, res);
+  router.get('/export.csv', ah(async (req, res) => {
+    const q = await reportQuery(req, res);
     if (!q) return;
-    const rows = loadDayRows(q.db, q.employee.id, q.from, q.to);
+    const rows = await loadDayRows(q.db, q.employee.id, q.from, q.to);
     const name = `checkpoint-${q.from ?? 'inicio'}-a-${q.to ?? q.today}.csv`;
     res.set('Content-Type', 'text/csv; charset=utf-8');
     res.set('Content-Disposition', `attachment; filename="${name}"`);
     res.send(daysCsv(rows, { employeeName: q.employee.name, meta: q.settings.meta, isLate: q.isLate }));
-  });
+  }));
 
-  router.get('/backup.json', (req, res) => {
+  router.get('/backup.json', ah(async (req, res) => {
     const db = req.app.locals.db;
-    const backup = buildBackup(db, req.app.locals.now());
-    logAudit(db, req.user.id, 'backup.download', null, req.app.locals.now());
+    const backup = await buildBackup(db, req.app.locals.now());
+    await logAudit(db, req.user.id, 'backup.download', null, req.app.locals.now());
     res.set('Content-Disposition', `attachment; filename="checkpoint-backup-${todayKey(req.app.locals.now())}.json"`);
     res.json(backup);
-  });
+  }));
 
   // ---------- Configurações ----------
 
-  router.get('/settings', (req, res) => {
-    res.json({ settings: settingsResponse(req.app.locals.db) });
-  });
+  router.get('/settings', ah(async (req, res) => {
+    res.json({ settings: await settingsResponse(req.app.locals.db) });
+  }));
 
-  router.put('/settings', (req, res) => {
+  router.put('/settings', ah(async (req, res) => {
     const db = req.app.locals.db;
     const parsed = parseSettings(req.body);
     if (parsed.error) return sendError(res, 400, 'invalid_settings', parsed.error);
-    const merged = { ...getSettings(db).raw, ...parsed.value };
+    const merged = { ...(await getSettings(db)).raw, ...parsed.value };
     if (merged.turno_inicio >= merged.turno_fim) {
       return sendError(res, 400, 'invalid_settings', 'O fim do turno precisa ser depois do início.');
     }
-    db.transaction(() => {
-      const upsert = db.prepare(
+    await db.batch(
+      Object.entries(parsed.value).map(([key, value]) => [
         'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-      );
-      for (const [key, value] of Object.entries(parsed.value)) upsert.run(key, value);
-      logAudit(db, req.user.id, 'settings.update', parsed.value, req.app.locals.now());
-    })();
-    res.json({ settings: settingsResponse(db) });
-  });
+        [key, value],
+      ]),
+    );
+    await logAudit(db, req.user.id, 'settings.update', parsed.value, req.app.locals.now());
+    res.json({ settings: await settingsResponse(db) });
+  }));
 
   // ---------- Etiqueta NFC ----------
 
-  router.get('/nfc', (req, res) => {
+  router.get('/nfc', ah(async (req, res) => {
     const db = req.app.locals.db;
-    res.json({ path: `/ponto/${getNfcToken(db)}`, required: isNfcRequired(db) });
-  });
+    res.json({ path: `/ponto/${await getNfcToken(db)}`, required: await isNfcRequired(db) });
+  }));
 
-  router.post('/nfc/rotate', (req, res) => {
+  router.post('/nfc/rotate', ah(async (req, res) => {
     const db = req.app.locals.db;
-    const token = rotateNfcToken(db);
-    logAudit(db, req.user.id, 'nfc.rotate', null, req.app.locals.now());
-    res.json({ path: `/ponto/${token}`, required: isNfcRequired(db) });
-  });
+    const token = await rotateNfcToken(db);
+    await logAudit(db, req.user.id, 'nfc.rotate', null, req.app.locals.now());
+    res.json({ path: `/ponto/${token}`, required: await isNfcRequired(db) });
+  }));
 
   // ---------- Checklist ----------
 
-  router.get('/checklist/:weekday', (req, res) => {
-    res.json({ checklist: templateResponse(req.app.locals.db, req.weekday) });
-  });
+  router.get('/checklist/:weekday', ah(async (req, res) => {
+    res.json({ checklist: await templateResponse(req.app.locals.db, req.weekday) });
+  }));
 
   // Salvar cria nova versão: vale de hoje (se o dia ainda estiver vazio) em diante; o passado não muda.
   // `also_weekdays` copia blocos e tarefas para outros dias, cada um mantendo o próprio foco de limpeza.
-  router.put('/checklist/:weekday', (req, res) => {
+  router.put('/checklist/:weekday', ah(async (req, res) => {
     const db = req.app.locals.db;
     const parsed = parseChecklist(req.body);
     if (parsed.error) return sendError(res, 400, 'invalid_checklist', parsed.error);
@@ -211,83 +211,83 @@ export function managerRouter() {
     if (others.error) return sendError(res, 400, 'invalid_checklist', others.error);
     const today = todayKey(req.app.locals.now());
     const targets = [req.weekday, ...others.value.filter((d) => d !== req.weekday)];
-    db.transaction(() => {
+    await db.transaction(async (tx) => {
       for (const weekday of targets) {
-        const focus = weekday === req.weekday ? parsed.value.cleaning_focus : loadTemplate(db, weekday)?.cleaning_focus ?? null;
-        createChecklistVersion(db, weekday, { ...parsed.value, cleaning_focus: focus }, today);
+        const focus = weekday === req.weekday
+          ? parsed.value.cleaning_focus
+          : (await loadTemplate(tx, weekday))?.cleaning_focus ?? null;
+        await createChecklistVersion(tx, weekday, { ...parsed.value, cleaning_focus: focus }, today);
       }
-      logAudit(db, req.user.id, 'checklist.save', { weekdays: targets, ...parsed.value }, req.app.locals.now());
-    })();
-    res.json({ checklist: templateResponse(db, req.weekday), saved_weekdays: targets });
-  });
+      await logAudit(tx, req.user.id, 'checklist.save', { weekdays: targets, ...parsed.value }, req.app.locals.now());
+    });
+    res.json({ checklist: await templateResponse(db, req.weekday), saved_weekdays: targets });
+  }));
 
-  router.post('/checklist/:weekday/restore', (req, res) => {
+  router.post('/checklist/:weekday/restore', ah(async (req, res) => {
     const db = req.app.locals.db;
     const today = todayKey(req.app.locals.now());
-    db.transaction(() => {
-      createChecklistVersion(
-        db,
+    await db.transaction(async (tx) => {
+      await createChecklistVersion(
+        tx,
         req.weekday,
         { cleaning_focus: DEFAULT_CLEANING_FOCUS[req.weekday], sections: DEFAULT_SECTIONS },
         today,
       );
-      logAudit(db, req.user.id, 'checklist.restore', { weekday: req.weekday }, req.app.locals.now());
-    })();
-    res.json({ checklist: templateResponse(db, req.weekday) });
-  });
+      await logAudit(tx, req.user.id, 'checklist.restore', { weekday: req.weekday }, req.app.locals.now());
+    });
+    res.json({ checklist: await templateResponse(db, req.weekday) });
+  }));
 
   // ---------- Roteiro de posts ----------
 
-  router.get('/posts', (req, res) => {
-    const posts = req.app.locals.db
-      .prepare(`SELECT ${POST_COLUMNS} FROM posts WHERE active = 1 ORDER BY weekday, slot, id`)
-      .all();
+  router.get('/posts', ah(async (req, res) => {
+    const posts = await req.app.locals.db.all(`SELECT ${POST_COLUMNS} FROM posts WHERE active = 1 ORDER BY weekday, slot, id`);
     res.json({ posts });
-  });
+  }));
 
-  router.post('/posts', (req, res) => {
+  router.post('/posts', ah(async (req, res) => {
     const db = req.app.locals.db;
     const parsed = parsePost(req.body);
     if (parsed.error) return sendError(res, 400, 'invalid_post', parsed.error);
     const p = parsed.value;
-    const id = db
-      .prepare('INSERT INTO posts (weekday, slot, channel, product_line, hook, caption, cta) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(p.weekday, p.slot, p.channel, p.product_line, p.hook, p.caption, p.cta).lastInsertRowid;
-    logAudit(db, req.user.id, 'post.create', { id, ...p }, req.app.locals.now());
-    res.status(201).json({ post: db.prepare(`SELECT ${POST_COLUMNS} FROM posts WHERE id = ?`).get(id) });
-  });
+    const id = (await db.run(
+      'INSERT INTO posts (weekday, slot, channel, product_line, hook, caption, cta) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [p.weekday, p.slot, p.channel, p.product_line, p.hook, p.caption, p.cta],
+    )).lastInsertRowid;
+    await logAudit(db, req.user.id, 'post.create', { id, ...p }, req.app.locals.now());
+    res.status(201).json({ post: await db.get(`SELECT ${POST_COLUMNS} FROM posts WHERE id = ?`, [id]) });
+  }));
 
-  router.get('/posts/:postId', (req, res) => {
-    const post = req.app.locals.db
-      .prepare(`SELECT ${POST_COLUMNS} FROM posts WHERE id = ? AND active = 1`)
-      .get(req.postId);
+  router.get('/posts/:postId', ah(async (req, res) => {
+    const post = await req.app.locals.db.get(`SELECT ${POST_COLUMNS} FROM posts WHERE id = ? AND active = 1`, [req.postId]);
     if (!post) return sendError(res, 404, 'post_not_found', 'Post não encontrado.');
     res.json({ post });
-  });
+  }));
 
-  router.put('/posts/:postId', (req, res) => {
+  router.put('/posts/:postId', ah(async (req, res) => {
     const db = req.app.locals.db;
-    if (!db.prepare('SELECT 1 FROM posts WHERE id = ? AND active = 1').get(req.postId)) {
+    if (!(await db.get('SELECT 1 FROM posts WHERE id = ? AND active = 1', [req.postId]))) {
       return sendError(res, 404, 'post_not_found', 'Post não encontrado.');
     }
     const parsed = parsePost(req.body);
     if (parsed.error) return sendError(res, 400, 'invalid_post', parsed.error);
     const p = parsed.value;
-    db.prepare(
+    await db.run(
       'UPDATE posts SET weekday = ?, slot = ?, channel = ?, product_line = ?, hook = ?, caption = ?, cta = ? WHERE id = ?',
-    ).run(p.weekday, p.slot, p.channel, p.product_line, p.hook, p.caption, p.cta, req.postId);
-    logAudit(db, req.user.id, 'post.update', { id: req.postId, ...p }, req.app.locals.now());
-    res.json({ post: db.prepare(`SELECT ${POST_COLUMNS} FROM posts WHERE id = ?`).get(req.postId) });
-  });
+      [p.weekday, p.slot, p.channel, p.product_line, p.hook, p.caption, p.cta, req.postId],
+    );
+    await logAudit(db, req.user.id, 'post.update', { id: req.postId, ...p }, req.app.locals.now());
+    res.json({ post: await db.get(`SELECT ${POST_COLUMNS} FROM posts WHERE id = ?`, [req.postId]) });
+  }));
 
   // Exclusão lógica, para o backup e o histórico continuarem consistentes.
-  router.delete('/posts/:postId', (req, res) => {
+  router.delete('/posts/:postId', ah(async (req, res) => {
     const db = req.app.locals.db;
-    const changed = db.prepare('UPDATE posts SET active = 0 WHERE id = ? AND active = 1').run(req.postId).changes;
-    if (!changed) return sendError(res, 404, 'post_not_found', 'Post não encontrado.');
-    logAudit(db, req.user.id, 'post.delete', { id: req.postId }, req.app.locals.now());
+    const { changes } = await db.run('UPDATE posts SET active = 0 WHERE id = ? AND active = 1', [req.postId]);
+    if (!changes) return sendError(res, 404, 'post_not_found', 'Post não encontrado.');
+    await logAudit(db, req.user.id, 'post.delete', { id: req.postId }, req.app.locals.now());
     res.json({ ok: true });
-  });
+  }));
 
   return router;
 }

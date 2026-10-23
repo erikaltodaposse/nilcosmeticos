@@ -6,17 +6,20 @@ import { sendError } from './http.js';
 import { authRouter, meRouter } from './routes/auth.js';
 import { managerRouter } from './routes/manager.js';
 import { dayRouter } from './routes/day.js';
+import { diskPhotoStore, blobPhotoStore } from './lib/photos.js';
 
 /**
  * Monta o app sem abrir porta, para os testes usarem com supertest.
- * `db` é uma conexão de openDb(); `sessionSecret` assina o cookie; `now` permite fixar o relógio nos testes.
+ * `db` é uma conexão de openDb(); `sessionSecret` assina o cookie; `now` permite fixar o relógio nos testes;
+ * `photos` é onde as fotos ficam (Vercel Blob se houver token, senão a pasta de uploads).
  */
 export function createApp({
   db,
   sessionSecret,
   secureCookies = config.isProduction,
   publicDir = config.publicDir,
-  uploadsDir = config.uploadsDir,
+  photos = config.blobToken ? blobPhotoStore(config.blobToken) : diskPhotoStore(config.uploadsDir),
+  trustProxy = config.onVercel ? true : 'loopback',
   now = () => new Date(),
 }) {
   if (!sessionSecret || sessionSecret.length < 32) {
@@ -26,10 +29,11 @@ export function createApp({
   const app = express();
   app.locals.db = db;
   app.locals.now = now;
-  app.locals.uploadsDir = uploadsDir;
+  app.locals.photos = photos;
   app.disable('x-powered-by');
-  // Em produção o Caddy fica na frente, no mesmo host: confiar só no proxy local para ler o IP real.
-  app.set('trust proxy', 'loopback');
+  // Para o limite de tentativas de login ver o IP real: na Vercel o proxy da plataforma reescreve
+  // X-Forwarded-For; num servidor próprio, só o proxy local (Caddy) é confiável.
+  app.set('trust proxy', trustProxy);
 
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser(sessionSecret));

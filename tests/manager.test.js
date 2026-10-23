@@ -14,7 +14,7 @@ function tasksOf(body) {
 }
 
 test('gestora lê o checklist de um dia da semana', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const m = await managerAgent(app);
   const res = await m.get('/api/manager/checklist/1').expect(200);
   assert.equal(res.body.checklist.version, 1);
@@ -24,7 +24,7 @@ test('gestora lê o checklist de um dia da semana', async () => {
 });
 
 test('editar e salvar vale para o dia seguinte e não altera o passado', async () => {
-  const { app, clock } = makeApp();
+  const { app, clock } = await makeApp();
   const employee = await employeeAgent(app, request);
   const m = await managerAgent(app);
 
@@ -59,7 +59,7 @@ test('editar e salvar vale para o dia seguinte e não altera o passado', async (
 });
 
 test('salvar com o dia de hoje vazio já aplica hoje', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const employee = await employeeAgent(app, request);
   const m = await managerAgent(app);
   await employee.get(`/api/day/${MONDAY}`).expect(200); // abre a tela, sem registrar nada
@@ -71,7 +71,7 @@ test('salvar com o dia de hoje vazio já aplica hoje', async () => {
 });
 
 test('restaurar padrão volta às 14 tarefas', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const m = await managerAgent(app);
   await m
     .put('/api/manager/checklist/3')
@@ -86,7 +86,7 @@ test('restaurar padrão volta às 14 tarefas', async () => {
 });
 
 test('checklist inválido é recusado com mensagem clara', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const m = await managerAgent(app);
   const cases = [
     { sections: [] },
@@ -109,7 +109,7 @@ test('checklist inválido é recusado com mensagem clara', async () => {
 });
 
 test('configurações: salvar, validar e registrar no audit_log', async () => {
-  const { app, db } = makeApp();
+  const { app, db } = await makeApp();
   const m = await managerAgent(app);
   const res = await m
     .put('/api/manager/settings')
@@ -124,12 +124,12 @@ test('configurações: salvar, validar e registrar no audit_log', async () => {
   await m.put('/api/manager/settings').send({ turno_inicio: '19:00' }).expect(400);
   await m.put('/api/manager/settings').send({ turno_fim: '25:00' }).expect(400);
 
-  const log = db.prepare("SELECT * FROM audit_log WHERE action = 'settings.update'").all();
+  const log = await db.all("SELECT * FROM audit_log WHERE action = 'settings.update'");
   assert.equal(log.length, 1);
 });
 
 test('roteiro: criar, editar, aparecer no dia e excluir', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const m = await managerAgent(app);
   const created = await m
     .post('/api/manager/posts')
@@ -152,7 +152,7 @@ test('roteiro: criar, editar, aparecer no dia e excluir', async () => {
 });
 
 test('funcionária não acessa o editor', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const employee = await employeeAgent(app, request);
   await employee.get('/api/manager/checklist/1').expect(403);
   await employee.put('/api/manager/checklist/1').send({}).expect(403);

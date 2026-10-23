@@ -9,8 +9,8 @@ import { snapshotTasks } from '../server/lib/snapshot.js';
 const MONDAY_WD = 1;
 
 // Template de 400 pontos: as mesmas seções, cada tarefa valendo mais.
-function bigTemplate(db) {
-  const t = loadTemplate(db, MONDAY_WD);
+async function bigTemplate(db) {
+  const t = await loadTemplate(db, MONDAY_WD);
   return {
     cleaning_focus: t.cleaning_focus,
     sections: [
@@ -20,60 +20,60 @@ function bigTemplate(db) {
   };
 }
 
-function pointsOf(db, day) {
+async function pointsOf(db, day) {
   const snapshot = JSON.parse(day.snapshot);
-  return dayPoints(snapshot, getChecks(db, day.id).map((c) => c.task_id));
+  return dayPoints(snapshot, (await getChecks(db, day.id)).map((c) => c.task_id));
 }
 
-function employeeId(db) {
-  return db.prepare("SELECT id FROM users WHERE role = 'employee'").get().id;
+async function employeeId(db) {
+  return (await db.get("SELECT id FROM users WHERE role = 'employee'")).id;
 }
 
-test('dia com snapshot de 150 continua 150 depois de o template virar 400', () => {
-  const { db } = makeApp();
-  const uid = employeeId(db);
-  const day = ensureDay(db, uid, '2026-10-19');
-  for (const task of snapshotTasks(JSON.parse(day.snapshot))) markTask(db, day.id, task.id);
-  assert.equal(pointsOf(db, day).earned, 150);
+test('dia com snapshot de 150 continua 150 depois de o template virar 400', async () => {
+  const { db } = await makeApp();
+  const uid = await employeeId(db);
+  const day = await ensureDay(db, uid, '2026-10-19');
+  for (const task of snapshotTasks(JSON.parse(day.snapshot))) await markTask(db, day.id, task.id);
+  assert.equal((await pointsOf(db, day)).earned, 150);
 
-  createChecklistVersion(db, MONDAY_WD, bigTemplate(db), MONDAY);
-  const template = loadTemplate(db, MONDAY_WD);
+  await createChecklistVersion(db, MONDAY_WD, await bigTemplate(db), MONDAY);
+  const template = await loadTemplate(db, MONDAY_WD);
   assert.equal(snapshotTasks(buildSnapshot(template)).reduce((s, t) => s + t.points, 0), 400);
 
-  const after = getDay(db, uid, '2026-10-19');
+  const after = await getDay(db, uid, '2026-10-19');
   assert.equal(after.snapshot, day.snapshot);
-  assert.deepEqual(pointsOf(db, after), { earned: 150, max: 150, done: 14, total: 14 });
+  assert.deepEqual(await pointsOf(db, after), { earned: 150, max: 150, done: 14, total: 14 });
 });
 
-test('editar checklist não altera o dia de hoje já registrado', () => {
-  const { db } = makeApp();
-  const uid = employeeId(db);
-  const day = ensureDay(db, uid, MONDAY);
-  markTask(db, day.id, snapshotTasks(JSON.parse(day.snapshot))[1].id);
+test('editar checklist não altera o dia de hoje já registrado', async () => {
+  const { db } = await makeApp();
+  const uid = await employeeId(db);
+  const day = await ensureDay(db, uid, MONDAY);
+  await markTask(db, day.id, snapshotTasks(JSON.parse(day.snapshot))[1].id);
 
-  createChecklistVersion(db, MONDAY_WD, bigTemplate(db), MONDAY);
-  assert.equal(getDay(db, uid, MONDAY).snapshot, day.snapshot);
+  await createChecklistVersion(db, MONDAY_WD, await bigTemplate(db), MONDAY);
+  assert.equal((await getDay(db, uid, MONDAY)).snapshot, day.snapshot);
 });
 
-test('dia de hoje vazio aceita regravação do snapshot', () => {
-  const { db } = makeApp();
-  const uid = employeeId(db);
-  const day = ensureDay(db, uid, MONDAY);
-  assert.equal(pointsOf(db, day).max, 150);
+test('dia de hoje vazio aceita regravação do snapshot', async () => {
+  const { db } = await makeApp();
+  const uid = await employeeId(db);
+  const day = await ensureDay(db, uid, MONDAY);
+  assert.equal((await pointsOf(db, day)).max, 150);
 
-  createChecklistVersion(db, MONDAY_WD, bigTemplate(db), MONDAY);
-  assert.equal(pointsOf(db, getDay(db, uid, MONDAY)).max, 400);
+  await createChecklistVersion(db, MONDAY_WD, await bigTemplate(db), MONDAY);
+  assert.equal((await pointsOf(db, await getDay(db, uid, MONDAY))).max, 400);
 });
 
-test('dia anterior vazio não é regravado', () => {
-  const { db } = makeApp();
-  const uid = employeeId(db);
-  const old = ensureDay(db, uid, '2026-10-19');
-  createChecklistVersion(db, MONDAY_WD, bigTemplate(db), MONDAY);
-  assert.equal(getDay(db, uid, '2026-10-19').snapshot, old.snapshot);
+test('dia anterior vazio não é regravado', async () => {
+  const { db } = await makeApp();
+  const uid = await employeeId(db);
+  const old = await ensureDay(db, uid, '2026-10-19');
+  await createChecklistVersion(db, MONDAY_WD, await bigTemplate(db), MONDAY);
+  assert.equal((await getDay(db, uid, '2026-10-19')).snapshot, old.snapshot);
 });
 
-test('regras de dia vazio', () => {
+test('regras de dia vazio', async () => {
   const empty = { date: MONDAY, check_in_at: null, check_out_at: null };
   assert.ok(isDayEmpty(empty, []));
   assert.ok(!isDayEmpty({ ...empty, check_in_at: 'x' }, []));

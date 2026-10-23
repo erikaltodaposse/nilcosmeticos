@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import Database from 'better-sqlite3';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createClient } from '@libsql/client';
 import { config } from './config.js';
 
-// Cada item roda uma única vez, na ordem. A posição no array é a versão (PRAGMA user_version).
+// Cada item roda uma única vez, na ordem; a posição no array é a versão (tabela _migrations).
 // Nunca edite uma migração já publicada: acrescente outra no fim.
 const MIGRATIONS = [
   `
@@ -114,31 +114,102 @@ const MIGRATIONS = [
   `,
 ];
 
-export function migrate(db) {
-  const current = db.pragma('user_version', { simple: true });
-  for (let v = current; v < MIGRATIONS.length; v++) {
-    db.transaction(() => {
-      db.exec(MIGRATIONS[v]);
-      db.pragma(`user_version = ${v + 1}`);
-    })();
+/**
+ * Acesso ao banco com API assíncrona sobre o libSQL: arquivo SQLite local no desenvolvimento,
+ * Turso na Vercel. Linhas voltam como objetos simples; números inteiros como Number.
+ */
+export class Db {
+  constructor(client, { inTransaction = false } = {}) {
+    this.client = client;
+    this.inTransaction = inTransaction;
   }
-  return db.pragma('user_version', { simple: true });
+
+  async all(sql, args = []) {
+    const result = await this.client.execute({ sql, args });
+    return result.rows.map((row) => Object.fromEntries(result.columns.map((col, i) => [col, row[i]])));
+  }
+
+  async get(sql, args = []) {
+    return (await this.all(sql, args))[0] ?? null;
+  }
+
+  async run(sql, args = []) {
+    const result = await this.client.execute({ sql, args });
+    return {
+      changes: result.rowsAffected,
+      lastInsertRowid: result.lastInsertRowid == null ? null : Number(result.lastInsertRowid),
+    };
+  }
+
+  /** Vários comandos de uma vez, atômicos, numa só ida ao banco. `statements` = [[sql, args], ...]. */
+  async batch(statements) {
+    if (statements.length === 0) return;
+    const stmts = statements.map(([sql, args = []]) => ({ sql, args }));
+    if (this.inTransaction) await this.client.batch(stmts);
+    else await this.client.batch(stmts, 'write');
+  }
+
+  async exec(sql) {
+    await this.client.executeMultiple(sql);
+  }
+
+  /** Roda `fn(db)` numa transação de escrita. Dentro de outra transação, reaproveita a mesma. */
+  async transaction(fn) {
+    if (this.inTransaction) return fn(this);
+    const tx = await this.client.transaction('write');
+    try {
+      const result = await fn(new Db(tx, { inTransaction: true }));
+      await tx.commit();
+      return result;
+    } catch (err) {
+      await tx.rollback().catch(() => {});
+      throw err;
+    } finally {
+      tx.close();
+    }
+  }
+
+  close() {
+    this.client.close();
+  }
 }
 
-/** Abre (e migra) um banco. Use ':memory:' nos testes. */
-export function openDb(file = config.dbFile) {
-  if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
-  const db = new Database(file);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  db.pragma('busy_timeout = 5000');
-  migrate(db);
+export async function schemaVersion(db) {
+  return (await db.get('SELECT COALESCE(MAX(version), 0) AS v FROM _migrations')).v;
+}
+
+export async function migrate(db) {
+  await db.exec('CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
+  for (let v = await schemaVersion(db); v < MIGRATIONS.length; v++) {
+    await db.transaction(async (tx) => {
+      await tx.exec(MIGRATIONS[v]);
+      await tx.run('INSERT INTO _migrations (version, applied_at) VALUES (?, ?)', [v + 1, new Date().toISOString()]);
+    });
+  }
+  return schemaVersion(db);
+}
+
+/**
+ * Abre e migra o banco. Com TURSO_DATABASE_URL usa o Turso; senão, o arquivo em DATA_DIR/app.db.
+ * `file` permite apontar outro arquivo (os testes usam um por teste).
+ */
+export async function openDb({ file = config.dbFile, url = config.tursoUrl, authToken = config.tursoToken } = {}) {
+  let client;
+  if (url) {
+    client = createClient({ url, authToken });
+  } else {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    client = createClient({ url: pathToFileURL(file).href });
+  }
+  const db = new Db(client);
+  if (!url) await db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
+  await migrate(db);
   return db;
 }
 
 // `npm run migrate` executa este arquivo diretamente.
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const db = openDb();
-  console.log(`Banco em ${config.dbFile} na versão ${db.pragma('user_version', { simple: true })}.`);
+  const db = await openDb();
+  console.log(`Banco ${config.tursoUrl ? 'Turso' : config.dbFile} na versão ${await schemaVersion(db)}.`);
   db.close();
 }

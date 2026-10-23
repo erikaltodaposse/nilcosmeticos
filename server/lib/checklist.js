@@ -5,8 +5,8 @@ import { nowISO, weekdayOf, timeKey, minutesOf } from './date.js';
 
 export const CHECKOUT_TOLERANCE_MIN = 10;
 
-export function getSettings(db) {
-  const rows = db.prepare('SELECT key, value FROM settings').all();
+export async function getSettings(db) {
+  const rows = await db.all('SELECT key, value FROM settings');
   const raw = Object.fromEntries(rows.map((r) => [r.key, r.value]));
   return {
     raw,
@@ -26,23 +26,28 @@ export function isWorkday(settings, date) {
 }
 
 /** Template vigente (última versão ativa) do dia da semana, com seções e tarefas ativas em ordem. */
-export function loadTemplate(db, weekday) {
-  const version = db
-    .prepare('SELECT * FROM checklist_versions WHERE weekday = ? AND active = 1 ORDER BY version DESC LIMIT 1')
-    .get(weekday);
+export async function loadTemplate(db, weekday) {
+  const version = await db.get(
+    'SELECT * FROM checklist_versions WHERE weekday = ? AND active = 1 ORDER BY version DESC LIMIT 1',
+    [weekday],
+  );
   if (!version) return null;
-  const sections = db
-    .prepare('SELECT * FROM checklist_sections WHERE version_id = ? ORDER BY position, id')
-    .all(version.id);
-  const taskStmt = db.prepare(
-    'SELECT * FROM checklist_tasks WHERE section_id = ? AND active = 1 ORDER BY position, id',
+  const sections = await db.all('SELECT * FROM checklist_sections WHERE version_id = ? ORDER BY position, id', [version.id]);
+  const tasks = await db.all(
+    `SELECT t.* FROM checklist_tasks t JOIN checklist_sections s ON s.id = t.section_id
+     WHERE s.version_id = ? AND t.active = 1 ORDER BY t.position, t.id`,
+    [version.id],
   );
   return {
     version_id: version.id,
     version: version.version,
     weekday,
     cleaning_focus: version.cleaning_focus,
-    sections: sections.map((s) => ({ title: s.title, subtitle: s.subtitle, tasks: taskStmt.all(s.id) })),
+    sections: sections.map((s) => ({
+      title: s.title,
+      subtitle: s.subtitle,
+      tasks: tasks.filter((t) => t.section_id === s.id),
+    })),
   };
 }
 
@@ -51,65 +56,66 @@ export function loadTemplate(db, weekday) {
  * o dia de hoje, se estiver vazio, recebe o snapshot novo (brief 7.2).
  * `data` = { cleaning_focus, sections: [{ title, subtitle, tasks: [{ text, points, requires_photo, post_slot, auto }] }] }.
  */
-export function createChecklistVersion(db, weekday, data, today) {
-  return db.transaction(() => {
+export async function createChecklistVersion(db, weekday, data, today) {
+  return db.transaction(async (tx) => {
     const now = nowISO();
-    const last = db.prepare('SELECT MAX(version) AS v FROM checklist_versions WHERE weekday = ?').get(weekday).v ?? 0;
-    db.prepare('UPDATE checklist_versions SET active = 0 WHERE weekday = ?').run(weekday);
-    const versionId = db
-      .prepare('INSERT INTO checklist_versions (weekday, version, cleaning_focus, active, created_at) VALUES (?, ?, ?, 1, ?)')
-      .run(weekday, last + 1, data.cleaning_focus ?? null, now).lastInsertRowid;
-    const insertSection = db.prepare(
-      'INSERT INTO checklist_sections (version_id, position, title, subtitle) VALUES (?, ?, ?, ?)',
-    );
-    const insertTask = db.prepare(
-      `INSERT INTO checklist_tasks (section_id, position, text, points, requires_photo, post_slot, auto)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    );
-    data.sections.forEach((section, sIdx) => {
-      const sectionId = insertSection.run(versionId, sIdx, section.title, section.subtitle ?? null).lastInsertRowid;
-      section.tasks.forEach((task, tIdx) => {
-        insertTask.run(
-          sectionId, tIdx, task.text, task.points,
-          task.requires_photo ? 1 : 0, task.post_slot ?? null, task.auto ?? null,
+    const last = (await tx.get('SELECT MAX(version) AS v FROM checklist_versions WHERE weekday = ?', [weekday])).v ?? 0;
+    await tx.run('UPDATE checklist_versions SET active = 0 WHERE weekday = ?', [weekday]);
+    const versionId = (await tx.run(
+      'INSERT INTO checklist_versions (weekday, version, cleaning_focus, active, created_at) VALUES (?, ?, ?, 1, ?)',
+      [weekday, last + 1, data.cleaning_focus ?? null, now],
+    )).lastInsertRowid;
+    for (const [sIdx, section] of data.sections.entries()) {
+      const sectionId = (await tx.run(
+        'INSERT INTO checklist_sections (version_id, position, title, subtitle) VALUES (?, ?, ?, ?)',
+        [versionId, sIdx, section.title, section.subtitle ?? null],
+      )).lastInsertRowid;
+      for (const [tIdx, task] of section.tasks.entries()) {
+        await tx.run(
+          `INSERT INTO checklist_tasks (section_id, position, text, points, requires_photo, post_slot, auto)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [sectionId, tIdx, task.text, task.points, task.requires_photo ? 1 : 0, task.post_slot ?? null, task.auto ?? null],
         );
-      });
-    });
+      }
+    }
 
     if (weekdayOf(today) === weekday) {
-      const snapshot = JSON.stringify(buildSnapshot(loadTemplate(db, weekday)));
-      for (const day of db.prepare('SELECT * FROM day_records WHERE date = ?').all(today)) {
-        if (canRewriteSnapshot(day, getChecks(db, day.id), today)) {
-          db.prepare('UPDATE day_records SET snapshot = ? WHERE id = ?').run(snapshot, day.id);
+      const snapshot = JSON.stringify(buildSnapshot(await loadTemplate(tx, weekday)));
+      for (const day of await tx.all('SELECT * FROM day_records WHERE date = ?', [today])) {
+        if (canRewriteSnapshot(day, await getChecks(tx, day.id), today)) {
+          await tx.run('UPDATE day_records SET snapshot = ? WHERE id = ?', [snapshot, day.id]);
         }
       }
     }
     return versionId;
-  })();
+  });
 }
 
-export function getDay(db, userId, date) {
-  return db.prepare('SELECT * FROM day_records WHERE user_id = ? AND date = ?').get(userId, date) ?? null;
+export async function getDay(db, userId, date) {
+  return db.get('SELECT * FROM day_records WHERE user_id = ? AND date = ?', [userId, date]);
 }
 
-export function getChecks(db, dayId) {
-  return db.prepare('SELECT * FROM task_checks WHERE day_id = ? ORDER BY done_at').all(dayId);
+export async function getChecks(db, dayId) {
+  return db.all('SELECT * FROM task_checks WHERE day_id = ? ORDER BY done_at', [dayId]);
 }
 
 /** Devolve o registro do dia, criando-o e congelando o snapshot se ainda não existir. */
-export function ensureDay(db, userId, date) {
-  const existing = getDay(db, userId, date);
+export async function ensureDay(db, userId, date) {
+  const existing = await getDay(db, userId, date);
   if (existing) return existing;
-  const template = loadTemplate(db, weekdayOf(date));
+  const template = await loadTemplate(db, weekdayOf(date));
   if (!template) throw Object.assign(new Error('Não há checklist para este dia da semana.'), { status: 409, code: 'no_checklist' });
-  db.prepare(
-    'INSERT OR IGNORE INTO day_records (user_id, date, snapshot, created_at) VALUES (?, ?, ?, ?)',
-  ).run(userId, date, JSON.stringify(buildSnapshot(template)), nowISO());
+  await db.run('INSERT OR IGNORE INTO day_records (user_id, date, snapshot, created_at) VALUES (?, ?, ?, ?)', [
+    userId,
+    date,
+    JSON.stringify(buildSnapshot(template)),
+    nowISO(),
+  ]);
   return getDay(db, userId, date);
 }
 
-export function markTask(db, dayId, taskId, at = nowISO()) {
-  db.prepare('INSERT OR IGNORE INTO task_checks (day_id, task_id, done_at) VALUES (?, ?, ?)').run(dayId, taskId, at);
+export async function markTask(db, dayId, taskId, at = nowISO()) {
+  await db.run('INSERT OR IGNORE INTO task_checks (day_id, task_id, done_at) VALUES (?, ?, ?)', [dayId, taskId, at]);
 }
 
 /** Saída depois do fim do turno + tolerância. */
@@ -119,9 +125,9 @@ export function isLateCheckout(checkOutAt, settings) {
 }
 
 /** Visão do dia para a API: snapshot com estado de cada tarefa e pontos. */
-export function dayView(db, day, settings) {
+export async function dayView(db, day, settings) {
   const snapshot = JSON.parse(day.snapshot);
-  const checks = getChecks(db, day.id);
+  const checks = await getChecks(db, day.id);
   const byTask = new Map(checks.map((c) => [c.task_id, c]));
   return {
     id: day.id,

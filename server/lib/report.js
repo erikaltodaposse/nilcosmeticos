@@ -6,15 +6,21 @@ import { addDays, weekdayOf } from './date.js';
 /**
  * Linhas de dia já com snapshot e checks: { date, check_in_at, check_out_at, closed_at, snapshot, checks: [{task_id, done_at, photo_path}] }.
  */
-export function loadDayRows(db, userId, from, to) {
-  const days = db
-    .prepare(
-      `SELECT * FROM day_records WHERE user_id = ? AND (? IS NULL OR date >= ?) AND (? IS NULL OR date <= ?)
-       ORDER BY date`,
-    )
-    .all(userId, from, from, to, to);
-  const checkStmt = db.prepare('SELECT task_id, done_at, photo_path FROM task_checks WHERE day_id = ?');
-  return days.map((d) => ({ ...d, snapshot: JSON.parse(d.snapshot), checks: checkStmt.all(d.id) }));
+export async function loadDayRows(db, userId, from, to) {
+  const range = 'user_id = ? AND (? IS NULL OR date >= ?) AND (? IS NULL OR date <= ?)';
+  const args = [userId, from, from, to, to];
+  const days = await db.all(`SELECT * FROM day_records WHERE ${range} ORDER BY date`, args);
+  const checks = await db.all(
+    `SELECT day_id, task_id, done_at, photo_path FROM task_checks
+     WHERE day_id IN (SELECT id FROM day_records WHERE ${range})`,
+    args,
+  );
+  const byDay = new Map();
+  for (const c of checks) {
+    if (!byDay.has(c.day_id)) byDay.set(c.day_id, []);
+    byDay.get(c.day_id).push({ task_id: c.task_id, done_at: c.done_at, photo_path: c.photo_path });
+  }
+  return days.map((d) => ({ ...d, snapshot: JSON.parse(d.snapshot), checks: byDay.get(d.id) ?? [] }));
 }
 
 /** Dia que entra nos números: trabalhado (com check) e já encerrado (fechado ou anterior a hoje). */

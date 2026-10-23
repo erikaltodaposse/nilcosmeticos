@@ -11,7 +11,7 @@ async function loginEmployee(agent, pin = '1234') {
 }
 
 test('rota protegida devolve 401 sem sessão', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const res = await request(app).get('/api/me');
   assert.equal(res.status, 401);
   assert.deepEqual(Object.keys(res.body).sort(), ['error', 'message']);
@@ -19,7 +19,7 @@ test('rota protegida devolve 401 sem sessão', async () => {
 });
 
 test('login inválido barra', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const pin = await request(app).post('/api/auth/login/pin').send({ pin: '9999' });
   assert.equal(pin.status, 401);
   assert.equal(pin.headers['set-cookie'], undefined);
@@ -34,7 +34,7 @@ test('login inválido barra', async () => {
 });
 
 test('gestora entra com e-mail e senha e /api/me responde', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const agent = request.agent(app);
   const login = await agent
     .post('/api/auth/login/password')
@@ -53,7 +53,7 @@ test('gestora entra com e-mail e senha e /api/me responde', async () => {
 });
 
 test('funcionária entra com PIN 1234 e precisa trocar antes de seguir', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const agent = request.agent(app);
   const login = await loginEmployee(agent);
   assert.equal(login.status, 200);
@@ -79,7 +79,7 @@ test('funcionária entra com PIN 1234 e precisa trocar antes de seguir', async (
 });
 
 test('employee não acessa rota de manager', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const agent = request.agent(app);
   await loginEmployee(agent);
   await agent.post('/api/auth/change-pin').send({ current_pin: '1234', new_pin: '4321' }).expect(200);
@@ -90,7 +90,7 @@ test('employee não acessa rota de manager', async () => {
 });
 
 test('gestora lê as configurações semeadas', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const agent = request.agent(app);
   await agent.post('/api/auth/login/password').send(MANAGER).expect(200);
   const res = await agent.get('/api/manager/settings');
@@ -100,7 +100,7 @@ test('gestora lê as configurações semeadas', async () => {
 });
 
 test('login bloqueia após 5 tentativas erradas', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   for (let i = 0; i < 5; i++) {
     await request(app).post('/api/auth/login/pin').send({ pin: '0000' }).expect(401);
   }
@@ -109,27 +109,25 @@ test('login bloqueia após 5 tentativas erradas', async () => {
   assert.equal(res.body.error, 'too_many_attempts');
 });
 
-test('seed é idempotente e cria checklist de 150 pontos para cada dia', () => {
-  const { db } = makeApp();
-  const again = seed(db, { MANAGER_EMAIL: MANAGER.email, MANAGER_PASSWORD: MANAGER.password });
+test('seed é idempotente e cria checklist de 150 pontos para cada dia', async () => {
+  const { db } = await makeApp();
+  const again = await seed(db, { MANAGER_EMAIL: MANAGER.email, MANAGER_PASSWORD: MANAGER.password });
   assert.deepEqual(again, { manager: false, employee: false, settings: 0, checklist: false });
-  const totals = db
-    .prepare(
+  const totals = await db.all(
       `SELECT v.weekday, SUM(t.points) AS total, COUNT(*) AS n FROM checklist_tasks t
        JOIN checklist_sections s ON s.id = t.section_id
        JOIN checklist_versions v ON v.id = s.version_id GROUP BY v.weekday`,
-    )
-    .all();
+  );
   assert.equal(totals.length, 7);
   for (const row of totals) {
     assert.equal(row.total, 150);
     assert.equal(row.n, 14);
   }
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 2);
+  assert.equal((await db.get('SELECT COUNT(*) AS n FROM users')).n, 2);
 });
 
 test('API desconhecida devolve 404 em JSON', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const res = await request(app).get('/api/nada');
   assert.equal(res.status, 404);
   assert.equal(res.body.error, 'not_found');
@@ -142,22 +140,22 @@ function allTasks(body) {
 }
 
 test('abrir o dia de hoje congela o snapshot', async () => {
-  const { app, db } = makeApp();
+  const { app, db } = await makeApp();
   const agent = await employeeAgent(app, request);
   const res = await agent.get(`/api/day/${MONDAY}`).expect(200);
   assert.equal(res.body.is_today, true);
   assert.equal(res.body.editable, true);
   assert.equal(res.body.day.points.max, 150);
   assert.equal(allTasks(res.body).length, 14);
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM day_records').get().n, 1);
+  assert.equal((await db.get('SELECT COUNT(*) AS n FROM day_records')).n, 1);
 });
 
 test('check-in cria snapshot e marca o ponto de entrada', async () => {
-  const { app, db } = makeApp();
+  const { app, db } = await makeApp();
   const agent = await employeeAgent(app, request);
   const res = await agent.post(`/api/day/${MONDAY}/checkin`).expect(200);
   assert.equal(res.body.day.check_in_at, MONDAY_15H.toISOString());
-  const row = db.prepare('SELECT snapshot FROM day_records').get();
+  const row = await db.get('SELECT snapshot FROM day_records');
   assert.equal(JSON.parse(row.snapshot).sections.length, 4);
   const entrada = allTasks(res.body).find((t) => t.auto === 'check_in');
   assert.equal(entrada.done, true);
@@ -166,7 +164,7 @@ test('check-in cria snapshot e marca o ponto de entrada', async () => {
 });
 
 test('marcar as 14 tarefas fecha 150 pontos', async () => {
-  const { app, clock } = makeApp();
+  const { app, clock } = await makeApp();
   const agent = await employeeAgent(app, request);
   let res = await agent.post(`/api/day/${MONDAY}/checkin`).expect(200);
   for (const task of allTasks(res.body).filter((t) => !t.auto)) {
@@ -195,7 +193,7 @@ test('marcar as 14 tarefas fecha 150 pontos', async () => {
 });
 
 test('fechar o dia exige a saída registrada', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const agent = await employeeAgent(app, request);
   await agent.post(`/api/day/${MONDAY}/checkin`).expect(200);
   const res = await agent.post(`/api/day/${MONDAY}/close`);
@@ -204,7 +202,7 @@ test('fechar o dia exige a saída registrada', async () => {
 });
 
 test('desmarcar tira os pontos; tarefa automática não aceita marcação manual', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const agent = await employeeAgent(app, request);
   const day = await agent.get(`/api/day/${MONDAY}`).expect(200);
   const boaTarde = allTasks(day.body).find((t) => t.text.startsWith('Postar'));
@@ -223,7 +221,7 @@ test('desmarcar tira os pontos; tarefa automática não aceita marcação manual
 });
 
 test('saída depois de 18h10 é sinalizada', async () => {
-  const { app, clock } = makeApp();
+  const { app, clock } = await makeApp();
   const agent = await employeeAgent(app, request);
   await agent.post(`/api/day/${MONDAY}/checkout`).expect(409); // sem entrada
   await agent.post(`/api/day/${MONDAY}/checkin`).expect(200);
@@ -233,7 +231,7 @@ test('saída depois de 18h10 é sinalizada', async () => {
 });
 
 test('dia anterior é imutável e data inválida é recusada', async () => {
-  const { app, clock } = makeApp();
+  const { app, clock } = await makeApp();
   const agent = await employeeAgent(app, request);
   const day = await agent.post(`/api/day/${MONDAY}/checkin`).expect(200);
   const task = allTasks(day.body).find((t) => !t.auto);
@@ -251,7 +249,7 @@ test('dia anterior é imutável e data inválida é recusada', async () => {
 });
 
 test('sábado e domingo não têm expediente', async () => {
-  const { app, db } = makeApp({ now: new Date('2026-10-24T19:00:00Z') }); // sábado
+  const { app, db } = await makeApp({ now: new Date('2026-10-24T19:00:00Z') }); // sábado
   const agent = await employeeAgent(app, request);
   const res = await agent.get('/api/day/2026-10-24').expect(200);
   assert.equal(res.body.workday, false);
@@ -259,11 +257,11 @@ test('sábado e domingo não têm expediente', async () => {
   const blocked = await agent.post('/api/day/2026-10-24/checkin');
   assert.equal(blocked.status, 409);
   assert.equal(blocked.body.error, 'no_workday');
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM day_records').get().n, 0);
+  assert.equal((await db.get('SELECT COUNT(*) AS n FROM day_records')).n, 0);
 });
 
 test('gestora vê o dia da funcionária, mas não registra', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const employee = await employeeAgent(app, request);
   await employee.post(`/api/day/${MONDAY}/checkin`).expect(200);
 
@@ -283,7 +281,7 @@ function photoTask(body) {
 }
 
 test('tarefa com foto obrigatória não marca sem imagem', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const agent = await employeeAgent(app, request);
   const day = await agent.get(`/api/day/${MONDAY}`).expect(200);
   const res = await agent.put(`/api/day/${MONDAY}/tasks/${photoTask(day.body).id}`);
@@ -292,7 +290,7 @@ test('tarefa com foto obrigatória não marca sem imagem', async () => {
 });
 
 test('upload rejeita arquivo não-imagem', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const agent = await employeeAgent(app, request);
   const day = await agent.get(`/api/day/${MONDAY}`).expect(200);
   const url = `/api/day/${MONDAY}/tasks/${photoTask(day.body).id}/photo`;
@@ -314,7 +312,7 @@ test('upload rejeita arquivo não-imagem', async () => {
 });
 
 test('foto marca a tarefa, fica fora da pasta pública e só sai com sessão', async () => {
-  const { app, uploadsDir } = makeApp();
+  const { app, uploadsDir } = await makeApp();
   const agent = await employeeAgent(app, request);
   const day = await agent.get(`/api/day/${MONDAY}`).expect(200);
   const task = photoTask(day.body);
@@ -347,7 +345,7 @@ test('foto marca a tarefa, fica fora da pasta pública e só sai com sessão', a
 });
 
 test('fechamento traz resumo e link do WhatsApp', async () => {
-  const { app, clock } = makeApp();
+  const { app, clock } = await makeApp();
   const agent = await employeeAgent(app, request);
   await agent.post(`/api/day/${MONDAY}/checkin`).expect(200);
   clock.now = new Date('2026-10-26T22:20:00Z'); // 18:20

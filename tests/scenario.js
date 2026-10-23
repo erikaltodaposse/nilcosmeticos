@@ -24,7 +24,7 @@ async function workDay(agent, clock, date, { skip = [], checkout = '18:05', clos
 
 /** Semana de 26 a 30/10/2026 com dias completos, falhas, atraso e uma falta; segunda 2/11 em andamento. */
 export async function scenario() {
-  const ctx = makeApp();
+  const ctx = await makeApp();
   const { app, clock } = ctx;
   const employee = await employeeAgent(app, request);
   await workDay(employee, clock, '2026-10-26');

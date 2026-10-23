@@ -10,12 +10,12 @@ if (!file) {
   process.exit(1);
 }
 
-const db = openDb();
+const db = await openDb();
 try {
-  const counts = restoreBackup(db, JSON.parse(fs.readFileSync(file, 'utf8')));
-  console.log(`Backup restaurado em ${config.dbFile}:`);
+  const counts = await restoreBackup(db, JSON.parse(fs.readFileSync(file, 'utf8')));
+  console.log(`Backup restaurado em ${config.tursoUrl ? 'Turso' : config.dbFile}:`);
   for (const [table, n] of Object.entries(counts)) console.log(`  ${table}: ${n}`);
-  console.log(`Copie também as fotos para ${config.uploadsDir}.`);
+  if (!config.blobToken) console.log(`Copie também as fotos para ${config.uploadsDir}.`);
 } catch (err) {
   console.error(err.message);
   process.exitCode = 1;

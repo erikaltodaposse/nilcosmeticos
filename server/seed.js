@@ -11,7 +11,7 @@ export const INITIAL_EMPLOYEE_PIN = '1234';
  * Popula o banco sem sobrescrever nada que já exista: pode rodar de novo com segurança.
  * Retorna um resumo do que foi criado.
  */
-export function seed(db, env = process.env) {
+export async function seed(db, env = process.env) {
   const email = (env.MANAGER_EMAIL || '').trim().toLowerCase();
   const password = env.MANAGER_PASSWORD || '';
   if (!email || !password) {
@@ -24,68 +24,58 @@ export function seed(db, env = process.env) {
   const now = nowISO();
   const created = { manager: false, employee: false, settings: 0, checklist: false };
 
-  db.transaction(() => {
-    const insertSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+  await db.transaction(async (tx) => {
     for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
-      created.settings += insertSetting.run(key, value).changes;
+      created.settings += (await tx.run('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', [key, value])).changes;
     }
 
-    if (!db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) {
-      db.prepare(
-        `INSERT INTO users (name, role, email, password_hash, created_at)
-         VALUES (?, 'manager', ?, ?, ?)`,
-      ).run(env.MANAGER_NAME || 'Gestora', email, hashSecret(password), now);
+    if (!(await tx.get('SELECT 1 FROM users WHERE email = ?', [email]))) {
+      await tx.run(
+        `INSERT INTO users (name, role, email, password_hash, created_at) VALUES (?, 'manager', ?, ?, ?)`,
+        [env.MANAGER_NAME || 'Gestora', email, hashSecret(password), now],
+      );
       created.manager = true;
     }
 
-    if (!db.prepare("SELECT 1 FROM users WHERE role = 'employee'").get()) {
-      db.prepare(
-        `INSERT INTO users (name, role, pin_hash, must_change_pin, created_at)
-         VALUES (?, 'employee', ?, 1, ?)`,
-      ).run(env.EMPLOYEE_NAME || 'Funcionária', hashSecret(INITIAL_EMPLOYEE_PIN), now);
+    if (!(await tx.get("SELECT 1 FROM users WHERE role = 'employee'"))) {
+      await tx.run(
+        `INSERT INTO users (name, role, pin_hash, must_change_pin, created_at) VALUES (?, 'employee', ?, 1, ?)`,
+        [env.EMPLOYEE_NAME || 'Funcionária', hashSecret(INITIAL_EMPLOYEE_PIN), now],
+      );
       created.employee = true;
     }
 
-    if (!db.prepare('SELECT 1 FROM checklist_versions').get()) {
-      const insertVersion = db.prepare(
-        `INSERT INTO checklist_versions (weekday, version, cleaning_focus, active, created_at)
-         VALUES (?, 1, ?, 1, ?)`,
-      );
-      const insertSection = db.prepare(
-        'INSERT INTO checklist_sections (version_id, position, title, subtitle) VALUES (?, ?, ?, ?)',
-      );
-      const insertTask = db.prepare(
-        `INSERT INTO checklist_tasks (section_id, position, text, points, requires_photo, post_slot, auto)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      );
+    if (!(await tx.get('SELECT 1 FROM checklist_versions'))) {
       for (let weekday = 0; weekday <= 6; weekday++) {
-        const versionId = insertVersion.run(weekday, DEFAULT_CLEANING_FOCUS[weekday], now).lastInsertRowid;
-        DEFAULT_SECTIONS.forEach((section, sIdx) => {
-          const sectionId = insertSection.run(versionId, sIdx, section.title, section.subtitle).lastInsertRowid;
-          section.tasks.forEach((task, tIdx) => {
-            insertTask.run(
-              sectionId,
-              tIdx,
-              task.text,
-              task.points,
-              task.requires_photo ? 1 : 0,
-              task.post_slot ?? null,
-              task.auto ?? null,
+        const versionId = (await tx.run(
+          'INSERT INTO checklist_versions (weekday, version, cleaning_focus, active, created_at) VALUES (?, 1, ?, 1, ?)',
+          [weekday, DEFAULT_CLEANING_FOCUS[weekday], now],
+        )).lastInsertRowid;
+        for (const [sIdx, section] of DEFAULT_SECTIONS.entries()) {
+          const sectionId = (await tx.run(
+            'INSERT INTO checklist_sections (version_id, position, title, subtitle) VALUES (?, ?, ?, ?)',
+            [versionId, sIdx, section.title, section.subtitle],
+          )).lastInsertRowid;
+          for (const [tIdx, task] of section.tasks.entries()) {
+            await tx.run(
+              `INSERT INTO checklist_tasks (section_id, position, text, points, requires_photo, post_slot, auto)
+               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              [sectionId, tIdx, task.text, task.points, task.requires_photo ? 1 : 0, task.post_slot ?? null, task.auto ?? null],
             );
-          });
-        });
+          }
+        }
       }
       created.checklist = true;
     }
-  })();
+  });
 
   return created;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const db = openDb();
+  const db = await openDb();
   try {
-    const r = seed(db);
+    const r = await seed(db);
     console.log(`Gestora: ${r.manager ? 'criada' : 'já existia'}.`);
     console.log(`Funcionária: ${r.employee ? `criada com PIN ${INITIAL_EMPLOYEE_PIN} (troca obrigatória no primeiro acesso)` : 'já existia'}.`);
     console.log(`Configurações novas: ${r.settings}.`);

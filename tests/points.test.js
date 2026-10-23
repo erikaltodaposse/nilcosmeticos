@@ -14,21 +14,21 @@ function defaultTemplate() {
   };
 }
 
-test('as 14 tarefas padrão somam 150', () => {
+test('as 14 tarefas padrão somam 150', async () => {
   const snap = buildSnapshot(defaultTemplate());
   const ids = snapshotTasks(snap).map((t) => t.id);
   assert.equal(ids.length, 14);
   assert.deepEqual(dayPoints(snap, ids), { earned: 150, max: 150, done: 14, total: 14 });
 });
 
-test('dia parcial soma só o que foi marcado', () => {
+test('dia parcial soma só o que foi marcado', async () => {
   const snap = buildSnapshot(defaultTemplate());
   // 1: ponto de entrada (10), 3: Boa tarde (15), 5: limpeza do foco (20)
   assert.deepEqual(dayPoints(snap, [1, 3, 5]), { earned: 45, max: 150, done: 3, total: 14 });
   assert.equal(dayPoints(snap, []).earned, 0);
 });
 
-test('tarefa removida do template não afeta dia antigo', () => {
+test('tarefa removida do template não afeta dia antigo', async () => {
   const template = defaultTemplate();
   const oldDay = buildSnapshot(template);
   const allIds = snapshotTasks(oldDay).map((t) => t.id);
@@ -40,12 +40,12 @@ test('tarefa removida do template não afeta dia antigo', () => {
   assert.equal(dayPoints(newDay, allIds).max, 130);
 });
 
-test('foco do dia entra no texto da tarefa', () => {
+test('foco do dia entra no texto da tarefa', async () => {
   const snap = buildSnapshot(defaultTemplate());
   assert.equal(snap.sections[1].tasks[0].text, 'Limpeza do foco do dia: hall principal e entrada');
 });
 
-test('adesão ignora dias sem check e aplica as faixas', () => {
+test('adesão ignora dias sem check e aplica as faixas', async () => {
   const a = adherence(
     [
       { points: 150, checks: 14 },

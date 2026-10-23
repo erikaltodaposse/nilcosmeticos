@@ -12,7 +12,7 @@ async function managerAgent(app) {
 const tokenOf = (path) => path.split('/').pop();
 
 test('gestora vê o link da etiqueta e o ponto comum continua valendo enquanto não exige', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const m = await managerAgent(app);
   const nfc = await m.get('/api/manager/nfc').expect(200);
   assert.match(nfc.body.path, /^\/ponto\/[A-Za-z0-9_-]{32}$/);
@@ -25,7 +25,7 @@ test('gestora vê o link da etiqueta e o ponto comum continua valendo enquanto n
 });
 
 test('com a etiqueta exigida, entrada e saída só valem com o código certo', async () => {
-  const { app, clock } = makeApp();
+  const { app, clock } = await makeApp();
   const m = await managerAgent(app);
   const token = tokenOf((await m.get('/api/manager/nfc')).body.path);
   const saved = await m.put('/api/manager/settings').send({ ponto_exige_nfc: true }).expect(200);
@@ -50,12 +50,12 @@ test('com a etiqueta exigida, entrada e saída só valem com o código certo', a
 });
 
 test('gerar novo código invalida a etiqueta antiga', async () => {
-  const { app, db } = makeApp();
+  const { app, db } = await makeApp();
   const m = await managerAgent(app);
   const old = tokenOf((await m.get('/api/manager/nfc')).body.path);
   const fresh = tokenOf((await m.post('/api/manager/nfc/rotate').expect(200)).body.path);
   assert.notEqual(old, fresh);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'nfc.rotate'").get().n, 1);
+  assert.equal((await db.get("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'nfc.rotate'")).n, 1);
 
   const e = await employeeAgent(app, request);
   const res = await e.post(`/api/day/${MONDAY}/checkin`).send({ nfc_token: old });
@@ -64,7 +64,7 @@ test('gerar novo código invalida a etiqueta antiga', async () => {
 });
 
 test('link da etiqueta abre o app; funcionária não vê o código', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const page = await request(app).get('/ponto/abcdefghijklmnopqrstuvwxyz012345').expect(200);
   assert.match(page.text, /<main id="app"/);
   assert.equal(page.headers['cache-control'], 'no-store');

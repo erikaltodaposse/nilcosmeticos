@@ -2,10 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { scenario } from './scenario.js';
-import { makeApp, MANAGER, SECRET } from './helpers.js';
-import { openDb } from '../server/db.js';
+import { makeApp, MANAGER, SECRET, freshDb } from './helpers.js';
 import { createApp } from '../server/app.js';
-import { CSV_HEADER } from '../server/lib/export.js';
+import { CSV_HEADER, restoreBackup } from '../server/lib/export.js';
 
 test('exportação CSV tem BOM e cabeçalho correto', async () => {
   const { manager } = await scenario();
@@ -39,9 +38,8 @@ test('backup restaurado em banco limpo reproduz os mesmos números', async () =>
   for (const q of queries) before[q] = (await manager.get(`/api/manager/${q}`)).text;
 
   // Banco novo, sem seed: só migrações + restauração.
-  const db = openDb(':memory:');
-  const { restoreBackup } = await import('../server/lib/export.js');
-  const counts = restoreBackup(db, JSON.parse(JSON.stringify(backup)));
+  const { db } = await freshDb();
+  const counts = await restoreBackup(db, JSON.parse(JSON.stringify(backup)));
   assert.equal(counts.task_checks, backup.tables.task_checks.length);
   const fresh = createApp({ db, sessionSecret: SECRET, secureCookies: false, now: () => new Date('2026-11-02T18:00:00Z') });
   const agent = request.agent(fresh);
@@ -52,8 +50,8 @@ test('backup restaurado em banco limpo reproduz os mesmos números', async () =>
   // A funcionária entra com o PIN que tinha antes do backup.
   await request(fresh).post('/api/auth/login/pin').send({ pin: '4321' }).expect(200);
 
-  assert.throws(() => restoreBackup(db, backup), /já tem dados/);
-  assert.throws(() => restoreBackup(openDb(':memory:'), { format: 'outro' }), /não é um backup/);
+  await assert.rejects(() => restoreBackup(db, backup), /já tem dados/);
+  await assert.rejects(async () => restoreBackup((await freshDb()).db, { format: 'outro' }), /não é um backup/);
 });
 
 test('funcionária não exporta', async () => {
@@ -63,7 +61,7 @@ test('funcionária não exporta', async () => {
 });
 
 test('CSV vazio ainda traz o cabeçalho', async () => {
-  const { app } = makeApp();
+  const { app } = await makeApp();
   const m = request.agent(app);
   await m.post('/api/auth/login/password').send(MANAGER).expect(200);
   const res = await m.get('/api/manager/export.csv').expect(200);

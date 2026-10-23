@@ -1,12 +1,11 @@
-import fs from 'node:fs';
+// Servidor para desenvolvimento local ou servidor próprio. Na Vercel a entrada é api/index.js.
 import { config } from './config.js';
 import { openDb } from './db.js';
 import { createApp } from './app.js';
 import { purgeExpiredSessions } from './lib/auth.js';
 
-fs.mkdirSync(config.uploadsDir, { recursive: true });
-const db = openDb(config.dbFile);
-purgeExpiredSessions(db);
+const db = await openDb();
+await purgeExpiredSessions(db);
 
 const app = createApp({ db, sessionSecret: config.sessionSecret });
 

@@ -18,8 +18,9 @@
     "restore": "node server/restore.js"
   },
   "dependencies": {
+    "@libsql/client": "^0.15.15",
+    "@vercel/blob": "^2.8.2",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^13.0.3",
     "cookie-parser": "^1.4.7",
     "dotenv": "^18.0.9",
     "express": "^4.22.3",

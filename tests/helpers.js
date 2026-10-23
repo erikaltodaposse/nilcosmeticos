@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { openDb } from '../server/db.js';
 import { createApp } from '../server/app.js';
+import { diskPhotoStore } from '../server/lib/photos.js';
 import { seed } from '../server/seed.js';
 
 export const MANAGER = { email: 'gestora@exemplo.com', password: 'senha-forte-123' };
@@ -12,13 +13,22 @@ export const SECRET = 'x'.repeat(64);
 export const MONDAY = '2026-10-26';
 export const MONDAY_15H = new Date('2026-10-26T19:00:00Z');
 
-/** App novo com banco em memória já semeado. `clock.now` pode ser trocado durante o teste. */
-export function makeApp({ now = MONDAY_15H } = {}) {
-  const db = openDb(':memory:');
-  seed(db, { MANAGER_EMAIL: MANAGER.email, MANAGER_PASSWORD: MANAGER.password, EMPLOYEE_NAME: 'Ana' });
+/** Banco novo e vazio (só migrado), num arquivo temporário. */
+export async function freshDb() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'checkpoint-test-'));
+  const db = await openDb({ file: path.join(dir, 'app.db'), url: '' });
+  return { db, dir };
+}
+
+/** App novo com banco temporário já semeado. `clock.now` pode ser trocado durante o teste. */
+export async function makeApp({ now = MONDAY_15H } = {}) {
+  const { db, dir } = await freshDb();
+  await seed(db, { MANAGER_EMAIL: MANAGER.email, MANAGER_PASSWORD: MANAGER.password, EMPLOYEE_NAME: 'Ana' });
   const clock = { now };
-  const uploadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'checkpoint-test-'));
-  const app = createApp({ db, sessionSecret: SECRET, secureCookies: false, now: () => clock.now, uploadsDir });
+  const uploadsDir = path.join(dir, 'uploads');
+  const app = createApp({
+    db, sessionSecret: SECRET, secureCookies: false, now: () => clock.now, photos: diskPhotoStore(uploadsDir),
+  });
   return { app, db, clock, uploadsDir };
 }
 
