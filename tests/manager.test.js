@@ -228,3 +228,25 @@ test('funcionária não acessa o editor', async () => {
   await employee.put('/api/manager/checklist/1').send({}).expect(403);
   await employee.post('/api/manager/posts').send({}).expect(403);
 });
+
+test('gestora cadastra outra gestora, que entra com e-mail e senha, e pode remover o acesso', async () => {
+  const { app } = await makeApp();
+  const m = await managerAgent(app);
+  const second = { email: 'segunda@nil.com', password: 'outra-senha-1' };
+  await m.post('/api/manager/managers').send({ name: 'Segunda', email: second.email, password: 'curta' }).expect(400);
+  await m.post('/api/manager/managers').send({ name: 'Repetida', email: MANAGER.email, password: 'senha-longa-1' }).expect(409);
+  const created = await m.post('/api/manager/managers').send({ name: 'Segunda', ...second, email: ' Segunda@Nil.com ' }).expect(201);
+  assert.equal(created.body.manager.email, second.email);
+  assert.equal(created.body.manager.password_hash, undefined);
+
+  const other = request.agent(app);
+  await other.post('/api/auth/login/password').send(second).expect(200);
+  await other.get('/api/manager/summary').expect(200);
+  const list = await m.get('/api/manager/managers').expect(200);
+  assert.deepEqual(list.body.managers.map((x) => x.is_me), [true, false]);
+
+  await other.delete(`/api/manager/managers/${created.body.manager.id}`).expect(409); // não remove a si mesma
+  await m.delete(`/api/manager/managers/${created.body.manager.id}`).expect(200);
+  await other.get('/api/manager/summary').expect(401);
+  await request(app).post('/api/auth/login/password').send(second).expect(401);
+});

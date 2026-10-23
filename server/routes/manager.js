@@ -2,6 +2,7 @@ import express from 'express';
 import { ah, requireRole, sendError } from '../http.js';
 import { todayKey, isDateKey, weekdayOf } from '../lib/date.js';
 import { logAudit } from '../lib/audit.js';
+import { hashSecret } from '../lib/auth.js';
 import { loadTemplate, createChecklistVersion, getSettings, isLateCheckout, loadPostsFor, refreshTodayPosts } from '../lib/checklist.js';
 import { loadDayRows, summarize, failureRanking, historyRow } from '../lib/report.js';
 import { daysCsv, buildBackup } from '../lib/export.js';
@@ -181,6 +182,55 @@ export function managerRouter() {
     );
     await logAudit(db, req.user.id, 'settings.update', parsed.value, req.app.locals.now());
     res.json({ settings: await settingsResponse(db) });
+  }));
+
+  // ---------- Gestoras ----------
+
+  const managerRow = 'id, name, email, active, created_at';
+
+  router.get('/managers', ah(async (req, res) => {
+    const managers = await req.app.locals.db.all(`SELECT ${managerRow} FROM users WHERE role = 'manager' AND active = 1 ORDER BY id`);
+    res.json({ managers: managers.map((m) => ({ ...m, active: Boolean(m.active), is_me: m.id === req.user.id })) });
+  }));
+
+  router.post('/managers', ah(async (req, res) => {
+    const db = req.app.locals.db;
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const password = req.body?.password;
+    if (!name || name.length > 60) return sendError(res, 400, 'invalid_manager', 'Informe o nome (até 60 caracteres).');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 120) return sendError(res, 400, 'invalid_manager', 'E-mail inválido.');
+    if (typeof password !== 'string' || password.length < 8 || password.length > 100) {
+      return sendError(res, 400, 'invalid_manager', 'A senha precisa ter pelo menos 8 caracteres.');
+    }
+    const existing = await db.get('SELECT id, role, active FROM users WHERE email = ?', [email]);
+    if (existing && (existing.active || existing.role !== 'manager')) {
+      return sendError(res, 409, 'email_taken', 'Já existe um acesso com este e-mail.');
+    }
+    const now = req.app.locals.now();
+    if (existing) {
+      await db.run('UPDATE users SET name = ?, password_hash = ?, active = 1 WHERE id = ?', [name, hashSecret(password), existing.id]);
+    } else {
+      await db.run("INSERT INTO users (name, role, email, password_hash, created_at) VALUES (?, 'manager', ?, ?, ?)", [
+        name, email, hashSecret(password), now.toISOString(),
+      ]);
+    }
+    const created = await db.get(`SELECT ${managerRow} FROM users WHERE email = ?`, [email]);
+    await logAudit(db, req.user.id, 'manager.create', { id: created.id, email }, now);
+    res.status(201).json({ manager: { ...created, active: true, is_me: false } });
+  }));
+
+  // Remove o acesso (exclusão lógica) e encerra as sessões abertas. A própria gestora não se remove.
+  router.delete('/managers/:managerId', ah(async (req, res) => {
+    const db = req.app.locals.db;
+    const id = Number(req.params.managerId);
+    if (!Number.isInteger(id)) return sendError(res, 400, 'invalid_manager', 'Gestora inválida.');
+    if (id === req.user.id) return sendError(res, 409, 'cannot_remove_self', 'Você não pode remover o seu próprio acesso.');
+    const { changes } = await db.run("UPDATE users SET active = 0 WHERE id = ? AND role = 'manager' AND active = 1", [id]);
+    if (!changes) return sendError(res, 404, 'manager_not_found', 'Gestora não encontrada.');
+    await db.run('DELETE FROM sessions WHERE user_id = ?', [id]);
+    await logAudit(db, req.user.id, 'manager.remove', { id }, req.app.locals.now());
+    res.json({ ok: true });
   }));
 
   // ---------- Etiqueta NFC ----------
