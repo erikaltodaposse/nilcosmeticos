@@ -2,6 +2,7 @@ import { api } from '../api.js';
 import { h, fill } from '../dom.js';
 import { addDays, formatShortDate, formatTime, formatMoney, formatPercent } from '../format.js';
 import { dayDetail } from './day-detail.js';
+import { columnChart, pieChart, outOfTen, CHART_COLORS } from '../charts.js';
 
 const PERIODS = [
   { id: '7', label: '7 dias', days: 7 },
@@ -32,10 +33,11 @@ export function dashboardView({ today }) {
   const periodChips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Período' });
   const live = h('section', { class: 'card live', 'aria-live': 'polite', 'aria-labelledby': 'live-title' });
   const kpis = h('section', { class: 'card', 'aria-labelledby': 'kpi-title' });
+  const charts = h('div', {});
   const failures = h('section', { class: 'card', 'aria-labelledby': 'fail-title' });
   const history = h('section', { class: 'card', 'aria-labelledby': 'hist-title' });
   const exportCard = h('section', { class: 'card', 'aria-labelledby': 'export-title' });
-  const main = h('div', {}, live, h('section', { class: 'card' }, h('h2', {}, 'Período'), periodChips), kpis, failures, history, exportCard);
+  const main = h('div', {}, live, h('section', { class: 'card' }, h('h2', {}, 'Período'), periodChips), kpis, charts, failures, history, exportCard);
   root.append(main);
 
   function query() {
@@ -138,6 +140,65 @@ export function dashboardView({ today }) {
     );
   }
 
+  function renderCharts(data) {
+    const s = data.summary;
+    if (!s.worked_days) {
+      fill(charts);
+      return;
+    }
+    const hits = s.series.filter((d) => d.points >= data.meta).length;
+    const days = s.series.slice(-31);
+    const tasksTen = outOfTen(s.tasks.done, s.tasks.total);
+    const p = s.punctuality;
+    const onTimeTen = outOfTen(p.on_time, p.timed);
+    const sentence = (text) => h('p', { class: 'chart-sentence' }, text);
+    fill(
+      charts,
+      h(
+        'section',
+        { class: 'card', 'aria-labelledby': 'chart-days' },
+        h('h2', { id: 'chart-days' }, 'Pontos em cada dia'),
+        sentence(`A linha tracejada é a meta de ${data.meta} pontos. Coluna rosa: bateu a meta. Coluna cinza: ficou abaixo.`),
+        columnChart({
+          meta: data.meta,
+          ariaLabel: `Pontos por dia. Bateu a meta em ${hits} de ${s.series.length} dias.`,
+          items: days.map((d) => ({
+            label: days.length <= 7 ? `${formatShortDate(d.date).slice(0, 3)} ${d.date.slice(8)}` : d.date.slice(8),
+            value: d.points,
+            title: `${formatShortDate(d.date)}: ${d.points} pontos`,
+          })),
+        }),
+        h('p', { class: 'chart-result' }, `Bateu a meta em ${hits} de ${s.series.length} ${s.series.length === 1 ? 'dia' : 'dias'}.`),
+      ),
+      h(
+        'section',
+        { class: 'card', 'aria-labelledby': 'chart-tasks' },
+        h('h2', { id: 'chart-tasks' }, 'Tarefas feitas'),
+        pieChart({
+          ariaLabel: `Tarefas: ${s.tasks.done} feitas e ${s.tasks.total - s.tasks.done} não feitas.`,
+          parts: [
+            { label: 'Feitas', value: s.tasks.done, color: CHART_COLORS.good },
+            { label: 'Não feitas', value: s.tasks.total - s.tasks.done, color: CHART_COLORS.rest },
+          ],
+        }),
+        tasksTen != null && h('p', { class: 'chart-result' }, `De cada 10 tarefas, ela fez ${tasksTen}.`),
+      ),
+      p.timed > 0 && h(
+        'section',
+        { class: 'card', 'aria-labelledby': 'chart-time' },
+        h('h2', { id: 'chart-time' }, 'Feitas no horário'),
+        pieChart({
+          ariaLabel: `Tarefas com horário: ${p.on_time} no horário e ${p.timed - p.on_time} com atraso.`,
+          parts: [
+            { label: 'No horário', value: p.on_time, color: CHART_COLORS.onTime },
+            { label: 'Com atraso', value: p.timed - p.on_time, color: CHART_COLORS.late },
+          ],
+        }),
+        h('p', { class: 'chart-result' }, `De cada 10 tarefas com horário, ${onTimeTen} saíram na hora certa.`),
+      ),
+    );
+  }
+
   function renderFailures(data) {
     const title = h('h2', { id: 'fail-title' }, 'Tarefas que mais falham');
     if (!data.failures.length) {
@@ -207,10 +268,12 @@ export function dashboardView({ today }) {
     try {
       const [summary, fails, days] = await Promise.all([api.summary(q), api.failures(q), api.days(q)]);
       renderKpis(summary);
+      renderCharts(summary);
       renderFailures(fails);
       renderHistory(days);
     } catch (err) {
       fill(kpis, h('p', { class: 'alert alert-error', role: 'alert' }, err.message));
+      fill(charts);
       fill(failures);
       fill(history);
     }

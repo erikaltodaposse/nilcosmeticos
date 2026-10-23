@@ -98,6 +98,7 @@ export function summarize(rows, { today, meta, bonusBase, workdays, from, to, is
     tier: tier ? { id: tier.id, label: tier.label, share: tier.share } : null,
     bonus_value: tier ? Math.round(bonusBase * tier.share * 100) / 100 : 0,
     late_checkouts: counted.filter(isLate).length,
+    tasks: counted.map(dayStats).reduce((acc, p) => ({ done: acc.done + p.done, total: acc.total + p.total }), { done: 0, total: 0 }),
     punctuality: (() => {
       const p = counted.map(dayPunctuality).reduce((a, b) => ({ timed: a.timed + b.timed, on_time: a.on_time + b.on_time }), { timed: 0, on_time: 0 });
       return { ...p, ratio: p.timed ? p.on_time / p.timed : null };

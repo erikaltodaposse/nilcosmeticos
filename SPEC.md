@@ -129,6 +129,8 @@ Cada linha: decisão — justificativa.
 71. **Programação por data**: postagem com `date` vale só naquele dia e substitui a semana padrão. O editor tem calendário do mês, "Personalizar este dia", "Copiar para outros dias" e "Voltar ao roteiro padrão". As tarefas do checklist continuam por dia da semana.
 72. **Roteiro padrão criado pelo seed uma vez só** (3 postagens por dia útil, com prompts de exemplo), marcado em `settings.roteiro_padrao_criado`.
 
+73. **Gráficos no painel** (pedido do Erik, 23/10), em SVG próprio, sem biblioteca: colunas de pontos por dia com a linha da meta, pizza de tarefas feitas e pizza de feitas no horário. Cada gráfico tem uma frase simples ("De cada 10 tarefas, ela fez 9"), números escritos e legenda, para não depender só da cor.
+
 ## 6. Pendências
 
 - **Protótipo `checkpoint-nil/index.html` não foi enviado.** Sem ele faltam: os 19 registros do roteiro de posts (tabela `posts` está vazia), subtítulos das seções e referências de texto e layout. Quando chegar, vai para `referencia/prototipo.html`.

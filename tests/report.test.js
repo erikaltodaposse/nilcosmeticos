@@ -48,6 +48,8 @@ test('resumo do período bate com o banco', async () => {
   assert.equal(s.not_closed, 1);
   assert.equal(s.missing_workdays, 1);
   assert.deepEqual(s.series.map((d) => d.points), [150, 120, 125, 120]);
+  assert.deepEqual(s.tasks, { done: 42, total: 48 });
+  assert.ok(s.punctuality.timed > 0);
 });
 
 test('ranking aponta a tarefa mais falha', async () => {

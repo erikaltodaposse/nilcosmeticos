@@ -345,3 +345,21 @@ a.btn { text-decoration: none; }
 .nfc-confirm .big { margin-top: 0; text-align: center; }
 [tabindex="-1"]:focus { outline: none; }
 .check-field input { flex: none; }
+
+/* Gráficos do painel. */
+.chart { width: 100%; height: auto; display: block; margin: 8px 0; }
+.chart-base { stroke: var(--line); stroke-width: 1; }
+.chart-meta { stroke: var(--berry-700); stroke-width: 2; stroke-dasharray: 6 5; }
+.chart-meta-label { fill: var(--berry-700); font: 800 12px var(--sans); }
+.chart-value { fill: var(--text); font: 800 12px var(--sans); }
+.chart-value-in { fill: var(--white); }
+.chart-axis { fill: var(--muted-strong); font: 700 11px var(--sans); }
+.chart-slice { stroke: var(--white); stroke-width: 2; }
+.chart-sentence { color: var(--muted-strong); margin: 0 0 4px; }
+.chart-result { font-size: 1.15rem; font-weight: 800; color: var(--text); margin: 8px 0 0; }
+.pie-wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px; margin-top: 8px; }
+.pie { width: 150px; height: 150px; flex: none; }
+.chart-legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; flex: 1; min-width: 140px; }
+.chart-legend li { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.chart-legend strong { margin-left: auto; }
+.swatch { width: 18px; height: 18px; border-radius: 6px; flex: none; }
