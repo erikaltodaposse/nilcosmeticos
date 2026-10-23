@@ -123,6 +123,12 @@ Cada linha: decisão — justificativa.
 66. **`trust proxy` = 1 salto na Vercel** (IP real do cliente para o limite de login, sem aceitar `X-Forwarded-For` forjado); fora dela, só `loopback`.
 67. **Seed automático na Vercel** quando `MANAGER_EMAIL` e `MANAGER_PASSWORD` estão definidas — o Erik não precisa de Node no computador. O seed é idempotente.
 
+68. **Horário por tarefa** (pedido do Erik, 23/10): campo opcional `due_time`. Feita mais de 15 minutos depois conta como atrasada, **sem perder pontos** (escolha do Erik). O painel mostra a porcentagem feita no horário; a tela Hoje ordena por horário e marca "Atrasada".
+69. **Postagens do dia numa tarefa só**: a tarefa com `posts = 1` recebe no snapshot o roteiro da data (1 a 10 postagens). Cada postagem é marcada à parte (`post_checks`); os pontos se dividem entre elas (arredondados para baixo) e a tarefa fica marcada quando todas estão feitas. A migração 3 juntou os três posts antigos nessa tarefa.
+70. **Roteiro em prompts para o ChatGPT**: cada postagem tem horário, tipo, objetivo, prompt da imagem e prompt do texto, com botões Copiar e Abrir no ChatGPT (`chatgpt.com/?q=`). O **estilo da marca** (Ajustes) entra no fim de todo prompt de imagem.
+71. **Programação por data**: postagem com `date` vale só naquele dia e substitui a semana padrão. O editor tem calendário do mês, "Personalizar este dia", "Copiar para outros dias" e "Voltar ao roteiro padrão". As tarefas do checklist continuam por dia da semana.
+72. **Roteiro padrão criado pelo seed uma vez só** (3 postagens por dia útil, com prompts de exemplo), marcado em `settings.roteiro_padrao_criado`.
+
 ## 6. Pendências
 
 - **Protótipo `checkpoint-nil/index.html` não foi enviado.** Sem ele faltam: os 19 registros do roteiro de posts (tabela `posts` está vazia), subtítulos das seções e referências de texto e layout. Quando chegar, vai para `referencia/prototipo.html`.
