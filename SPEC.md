@@ -120,12 +120,13 @@ Cada linha: decisão — justificativa.
 63. **Banco no Turso via `@libsql/client`** no lugar de `better-sqlite3`: a Vercel não persiste arquivos. Todo acesso ao banco virou assíncrono; transações usam `db.transaction` e `db.batch`. Localmente e nos testes o mesmo cliente abre um arquivo.
 64. **Migrações controladas pela tabela `_migrations`** — o Turso não garante `PRAGMA user_version`.
 65. **Fotos no Vercel Blob** com nome aleatório (UUID); o endereço do Blob nunca vai ao navegador: a rota autenticada busca a imagem e repassa. Só aceita endereços `*.blob.vercel-storage.com`. Localmente continuam em `DATA_DIR/uploads`.
-66. **`trust proxy` ligado na Vercel** (IP real do cliente para o limite de login); fora dela, só `loopback`.
+66. **`trust proxy` = 1 salto na Vercel** (IP real do cliente para o limite de login, sem aceitar `X-Forwarded-For` forjado); fora dela, só `loopback`.
+67. **Seed automático na Vercel** quando `MANAGER_EMAIL` e `MANAGER_PASSWORD` estão definidas — o Erik não precisa de Node no computador. O seed é idempotente.
 
 ## 6. Pendências
 
 - **Protótipo `checkpoint-nil/index.html` não foi enviado.** Sem ele faltam: os 19 registros do roteiro de posts (tabela `posts` está vazia), subtítulos das seções e referências de texto e layout. Quando chegar, vai para `referencia/prototipo.html`.
-- Deploy: falta o Erik criar o banco no Turso, conectar o Blob e cadastrar as variáveis (README, seção Deploy na Vercel).
+- Deploy: falta o Erik criar o banco no Turso, conectar o Blob e cadastrar as variáveis (README, seção Deploy na Vercel). Blob conectado e variáveis do Turso cadastradas em 23/10; faltam as da gestora e o redeploy.
 
 ## 7. Perguntas respondidas (23/10/2026)
 

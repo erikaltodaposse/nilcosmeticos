@@ -121,13 +121,11 @@ plano gratuito) e as fotos no **Vercel Blob**. O repositório já traz `vercel.j
      `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`);
    - `NODE_ENV` = `production`;
    - `NODEJS_HELPERS` = `0` (deixa o Express ler o corpo das requisições sem interferência da Vercel).
-4. **Seed, uma vez só, do seu computador.** Com o repositório clonado e `npm ci` feito, no PowerShell:
-   ```powershell
-   $env:TURSO_DATABASE_URL="libsql://..."; $env:TURSO_AUTH_TOKEN="..."
-   $env:MANAGER_EMAIL="voce@exemplo.com"; $env:MANAGER_PASSWORD="senha-forte"; $env:EMPLOYEE_NAME="Nome"
-   npm run seed
-   ```
-   O seed cria as tabelas no Turso, a gestora, a funcionária (PIN `1234`, troca no primeiro acesso) e o checklist.
+4. **Contas iniciais.** Cadastre também `MANAGER_EMAIL`, `MANAGER_PASSWORD` (mínimo 8 caracteres) e, se quiser,
+   `EMPLOYEE_NAME`. Na primeira requisição o app cria as tabelas no Turso, a gestora, a funcionária (PIN `1234`,
+   troca no primeiro acesso) e o checklist. Depois disso o seed não sobrescreve nada; trocar a senha nessa variável
+   não muda a senha de uma gestora já criada. Rodar `npm run seed` do computador, com as variáveis do Turso, também
+   funciona.
 5. **Redeploy.** Em Deployments, refaça o último deploy para ele ler as variáveis novas. Se faltar alguma, as rotas
    `/api` respondem `server_not_configured` e o log da função diz qual.
 6. **Etiqueta NFC.** Grave o link só depois, a partir de Ajustes, já no domínio final `https://...vercel.app`.
