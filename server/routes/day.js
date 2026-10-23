@@ -1,9 +1,9 @@
 import express from 'express';
 import multer from 'multer';
 import { ah, requireAuth, requireRole, sendError } from '../http.js';
-import { isDateKey, todayKey, nowISO, weekdayOf } from '../lib/date.js';
-import { findSnapshotTask } from '../lib/snapshot.js';
-import { getSettings, isWorkday, getDay, ensureDay, markTask, dayView } from '../lib/checklist.js';
+import { isDateKey, todayKey, nowISO, weekdayOf, timeKey } from '../lib/date.js';
+import { findSnapshotTask, postsTask, isPostsDriven } from '../lib/snapshot.js';
+import { getSettings, isWorkday, getDay, ensureDay, markTask, dayView, syncPostsTask } from '../lib/checklist.js';
 import { ALLOWED_TYPES, MAX_PHOTO_BYTES, sniffImageType } from '../lib/photos.js';
 import { daySummaryText, whatsappLink } from '../lib/summary.js';
 import { isNfcRequired, checkNfcToken } from '../lib/nfc.js';
@@ -48,10 +48,6 @@ async function payload(req, user, date) {
   const isToday = date === today(req);
   const workday = isWorkday(settings, date);
   const day = user ? await getDay(db, user.id, date) : null;
-  const posts = await db.all(
-    'SELECT id, slot, channel, product_line, hook, caption, cta FROM posts WHERE weekday = ? AND active = 1 ORDER BY slot, id',
-    [weekdayOf(date)],
-  );
   const view = day ? await dayView(db, day, settings) : null;
   const summaryText = view
     ? daySummaryText({ date, storeName: settings.storeName, employeeName: user.name, day: view })
@@ -62,6 +58,8 @@ async function payload(req, user, date) {
     is_today: isToday,
     workday,
     editable: Boolean(req.user.role === 'employee' && isToday && workday && !day?.closed_at),
+    // Hora atual em Manaus, para a tela marcar o que já passou do horário.
+    now_time: timeKey(req.app.locals.now()),
     employee: user ? { id: user.id, name: user.name } : null,
     settings: {
       meta: settings.meta,
@@ -72,7 +70,6 @@ async function payload(req, user, date) {
     },
     day: view,
     summary: summaryText ? { text: summaryText, whatsapp_url: whatsappLink(summaryText) } : null,
-    posts,
   };
 }
 
@@ -182,6 +179,10 @@ export function dayRouter() {
       sendError(res, 409, 'auto_task', 'Esta tarefa é marcada pelo próprio app.');
       return null;
     }
+    if (isPostsDriven(task)) {
+      sendError(res, 409, 'posts_task', 'Esta tarefa é marcada postagem por postagem.');
+      return null;
+    }
     return task;
   }
 
@@ -228,6 +229,38 @@ export function dayRouter() {
         req.day.id, task.id, nowISO(req.app.locals.now()), ref,
       ]);
     }
+    res.json(await payload(req, req.user, req.params.date));
+  }));
+
+  // Cada postagem do roteiro é marcada à parte; com todas feitas, a tarefa de postagens fica marcada.
+  function snapshotPostOf(req, res) {
+    const task = postsTask(req.snapshot);
+    const postId = Number(req.params.postId);
+    const post = task?.posts?.find((p) => p.id === postId);
+    if (!post) {
+      sendError(res, 404, 'post_not_found', 'Esta postagem não faz parte do roteiro de hoje.');
+      return null;
+    }
+    return { task, post };
+  }
+
+  router.put('/:date/posts/:postId', writable, ah(async (req, res) => {
+    const found = snapshotPostOf(req, res);
+    if (!found) return;
+    const db = req.app.locals.db;
+    await db.run('INSERT OR IGNORE INTO post_checks (day_id, post_id, done_at) VALUES (?, ?, ?)', [
+      req.day.id, found.post.id, nowISO(req.app.locals.now()),
+    ]);
+    await syncPostsTask(db, req.day.id, found.task);
+    res.json(await payload(req, req.user, req.params.date));
+  }));
+
+  router.delete('/:date/posts/:postId', writable, ah(async (req, res) => {
+    const found = snapshotPostOf(req, res);
+    if (!found) return;
+    const db = req.app.locals.db;
+    await db.run('DELETE FROM post_checks WHERE day_id = ? AND post_id = ?', [req.day.id, found.post.id]);
+    await syncPostsTask(db, req.day.id, found.task);
     res.json(await payload(req, req.user, req.params.date));
   }));
 

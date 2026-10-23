@@ -19,6 +19,10 @@ export function daySummaryText({ date, storeName, employeeName, day }) {
     `Pontos: ${day.points.earned} de ${day.points.meta}`,
     `Tarefas: ${day.points.done} de ${day.points.total}`,
   ];
+  const posts = tasks.find((t) => t.posts?.length)?.posts;
+  if (posts) lines.push(`Postagens: ${posts.filter((p) => p.done).length} de ${posts.length}`);
+  const late = tasks.filter((t) => t.late).length + (posts ?? []).filter((p) => p.late).length;
+  if (late) lines.push(`Feitas com atraso: ${late}`);
   if (pending.length) {
     lines.push('', 'Não cumpridas:', ...pending.map((t) => `- ${t.text}`));
   } else {

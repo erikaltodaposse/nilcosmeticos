@@ -2,9 +2,11 @@
 import { snapshotTasks, FOCUS_PLACEHOLDER } from './snapshot.js';
 import { dayPoints, adherence, bonusTier } from './points.js';
 import { addDays, weekdayOf } from './date.js';
+import { isLateDone } from './checklist.js';
 
 /**
- * Linhas de dia já com snapshot e checks: { date, check_in_at, check_out_at, closed_at, snapshot, checks: [{task_id, done_at, photo_path}] }.
+ * Linhas de dia já com snapshot e checks:
+ * { date, check_in_at, check_out_at, closed_at, snapshot, checks: [{task_id, done_at, photo_path}], post_checks: [{post_id, done_at}] }.
  */
 export async function loadDayRows(db, userId, from, to) {
   const range = 'user_id = ? AND (? IS NULL OR date >= ?) AND (? IS NULL OR date <= ?)';
@@ -15,21 +17,57 @@ export async function loadDayRows(db, userId, from, to) {
      WHERE day_id IN (SELECT id FROM day_records WHERE ${range})`,
     args,
   );
-  const byDay = new Map();
-  for (const c of checks) {
-    if (!byDay.has(c.day_id)) byDay.set(c.day_id, []);
-    byDay.get(c.day_id).push({ task_id: c.task_id, done_at: c.done_at, photo_path: c.photo_path });
-  }
-  return days.map((d) => ({ ...d, snapshot: JSON.parse(d.snapshot), checks: byDay.get(d.id) ?? [] }));
+  const postChecks = await db.all(
+    `SELECT day_id, post_id, done_at FROM post_checks
+     WHERE day_id IN (SELECT id FROM day_records WHERE ${range})`,
+    args,
+  );
+  const group = (rows, pick) => {
+    const map = new Map();
+    for (const r of rows) {
+      if (!map.has(r.day_id)) map.set(r.day_id, []);
+      map.get(r.day_id).push(pick(r));
+    }
+    return map;
+  };
+  const byDay = group(checks, (c) => ({ task_id: c.task_id, done_at: c.done_at, photo_path: c.photo_path }));
+  const postsByDay = group(postChecks, (c) => ({ post_id: c.post_id, done_at: c.done_at }));
+  return days.map((d) => ({
+    ...d,
+    snapshot: JSON.parse(d.snapshot),
+    checks: byDay.get(d.id) ?? [],
+    post_checks: postsByDay.get(d.id) ?? [],
+  }));
 }
 
 /** Dia que entra nos números: trabalhado (com check) e já encerrado (fechado ou anterior a hoje). */
 export function isCountable(row, today) {
-  return row.checks.length > 0 && (row.date < today || Boolean(row.closed_at));
+  return (row.checks.length > 0 || (row.post_checks?.length ?? 0) > 0) && (row.date < today || Boolean(row.closed_at));
 }
 
 export function dayStats(row) {
-  return dayPoints(row.snapshot, row.checks.map((c) => c.task_id));
+  return dayPoints(row.snapshot, row.checks.map((c) => c.task_id), (row.post_checks ?? []).map((c) => c.post_id));
+}
+
+/**
+ * Pontualidade do dia: tarefas e postagens com horário que foram feitas, e quantas dentro da tolerância.
+ * A tarefa de postagens não conta por si: cada postagem conta com o próprio horário.
+ */
+export function dayPunctuality(row) {
+  const doneAt = new Map(row.checks.map((c) => [c.task_id, c.done_at]));
+  const postAt = new Map((row.post_checks ?? []).map((c) => [c.post_id, c.done_at]));
+  let timed = 0;
+  let onTime = 0;
+  const count = (due, at) => {
+    if (!due || !at) return;
+    timed++;
+    if (!isLateDone(due, at)) onTime++;
+  };
+  for (const task of snapshotTasks(row.snapshot)) {
+    if (task.posts?.length) for (const post of task.posts) count(post.time, postAt.get(post.id));
+    else count(task.due_time, doneAt.get(task.id));
+  }
+  return { timed, on_time: onTime };
 }
 
 /** Resumo do período. `isLate(row)` diz se a saída passou da tolerância. */
@@ -60,6 +98,10 @@ export function summarize(rows, { today, meta, bonusBase, workdays, from, to, is
     tier: tier ? { id: tier.id, label: tier.label, share: tier.share } : null,
     bonus_value: tier ? Math.round(bonusBase * tier.share * 100) / 100 : 0,
     late_checkouts: counted.filter(isLate).length,
+    punctuality: (() => {
+      const p = counted.map(dayPunctuality).reduce((a, b) => ({ timed: a.timed + b.timed, on_time: a.on_time + b.on_time }), { timed: 0, on_time: 0 });
+      return { ...p, ratio: p.timed ? p.on_time / p.timed : null };
+    })(),
     not_closed: counted.filter((r) => !r.closed_at).length,
     missing_workdays: missing,
     series,
@@ -121,7 +163,11 @@ export function historyRow(row, { today, isLate }) {
     done: p.done,
     total: p.total,
     photos: row.checks.filter((c) => c.photo_path).length,
+    ...(() => {
+      const p = dayPunctuality(row);
+      return { timed: p.timed, on_time: p.on_time };
+    })(),
     photo_tasks: photoTasks,
-    status: row.closed_at ? 'fechado' : row.date === today ? 'em_andamento' : row.checks.length ? 'sem_fechamento' : 'sem_registro',
+    status: row.closed_at ? 'fechado' : row.date === today ? 'em_andamento' : isCountable(row, today) ? 'sem_fechamento' : 'sem_registro',
   };
 }

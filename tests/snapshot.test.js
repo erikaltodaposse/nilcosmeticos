@@ -42,7 +42,7 @@ test('dia com snapshot de 150 continua 150 depois de o template virar 400', asyn
 
   const after = await getDay(db, uid, '2026-10-19');
   assert.equal(after.snapshot, day.snapshot);
-  assert.deepEqual(await pointsOf(db, after), { earned: 150, max: 150, done: 14, total: 14 });
+  assert.deepEqual(await pointsOf(db, after), { earned: 150, max: 150, done: 12, total: 12 });
 });
 
 test('editar checklist não altera o dia de hoje já registrado', async () => {

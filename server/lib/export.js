@@ -52,7 +52,7 @@ export function daysCsv(rows, { employeeName, meta, isLate }) {
 // Ordem respeita as chaves estrangeiras na restauração. Sessões ficam de fora de propósito.
 export const BACKUP_TABLES = [
   'users', 'settings', 'checklist_versions', 'checklist_sections', 'checklist_tasks',
-  'day_records', 'task_checks', 'posts', 'audit_log',
+  'day_records', 'task_checks', 'post_checks', 'posts', 'audit_log',
 ];
 export const BACKUP_FORMAT = 'checkpoint-nil-backup';
 

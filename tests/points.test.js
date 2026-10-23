@@ -14,18 +14,31 @@ function defaultTemplate() {
   };
 }
 
-test('as 14 tarefas padrão somam 150', async () => {
+test('as 12 tarefas padrão somam 150', async () => {
   const snap = buildSnapshot(defaultTemplate());
   const ids = snapshotTasks(snap).map((t) => t.id);
-  assert.equal(ids.length, 14);
-  assert.deepEqual(dayPoints(snap, ids), { earned: 150, max: 150, done: 14, total: 14 });
+  assert.equal(ids.length, 12);
+  assert.deepEqual(dayPoints(snap, ids), { earned: 150, max: 150, done: 12, total: 12 });
 });
 
 test('dia parcial soma só o que foi marcado', async () => {
   const snap = buildSnapshot(defaultTemplate());
   // 1: ponto de entrada (10), 3: Boa tarde (15), 5: limpeza do foco (20)
-  assert.deepEqual(dayPoints(snap, [1, 3, 5]), { earned: 45, max: 150, done: 3, total: 14 });
+  assert.deepEqual(dayPoints(snap, [1, 3, 5]), { earned: 45, max: 150, done: 3, total: 12 });
   assert.equal(dayPoints(snap, []).earned, 0);
+});
+
+test('postagens rendem pontos proporcionais até a tarefa ficar completa', async () => {
+  const posts = [{ id: 101, time: '13:30' }, { id: 102, time: '15:30' }, { id: 103, time: '17:00' }];
+  const snap = buildSnapshot(defaultTemplate(), posts);
+  const task = snapshotTasks(snap).find((t) => t.posts);
+  assert.equal(task.posts.length, 3);
+  assert.equal(task.points, 30);
+  assert.equal(dayPoints(snap, [], [101]).earned, 10);
+  assert.equal(dayPoints(snap, [], [101, 102]).earned, 20);
+  // Com todas feitas, a tarefa é marcada e vale os 30 inteiros, sem contar as postagens de novo.
+  assert.equal(dayPoints(snap, [task.id], [101, 102, 103]).earned, 30);
+  assert.equal(dayPoints(snap, [task.id], [101, 102, 103]).done, 1);
 });
 
 test('tarefa removida do template não afeta dia antigo', async () => {

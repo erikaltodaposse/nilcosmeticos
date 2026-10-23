@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { openDb } from './db.js';
 import { hashSecret } from './lib/auth.js';
 import { nowISO } from './lib/date.js';
-import { DEFAULT_SETTINGS, DEFAULT_CLEANING_FOCUS, DEFAULT_SECTIONS } from './lib/defaults.js';
+import { DEFAULT_SETTINGS, DEFAULT_CLEANING_FOCUS, DEFAULT_SECTIONS, defaultPosts } from './lib/defaults.js';
 
 export const INITIAL_EMPLOYEE_PIN = '1234';
 
@@ -22,7 +22,7 @@ export async function seed(db, env = process.env) {
   }
 
   const now = nowISO();
-  const created = { manager: false, employee: false, settings: 0, checklist: false };
+  const created = { manager: false, employee: false, settings: 0, checklist: false, posts: false };
 
   await db.transaction(async (tx) => {
     for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
@@ -58,14 +58,28 @@ export async function seed(db, env = process.env) {
           )).lastInsertRowid;
           for (const [tIdx, task] of section.tasks.entries()) {
             await tx.run(
-              `INSERT INTO checklist_tasks (section_id, position, text, points, requires_photo, post_slot, auto)
-               VALUES (?, ?, ?, ?, ?, ?, ?)`,
-              [sectionId, tIdx, task.text, task.points, task.requires_photo ? 1 : 0, task.post_slot ?? null, task.auto ?? null],
+              `INSERT INTO checklist_tasks (section_id, position, text, points, requires_photo, auto, due_time, posts)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [sectionId, tIdx, task.text, task.points, task.requires_photo ? 1 : 0, task.auto ?? null, task.due_time ?? null, task.posts ? 1 : 0],
             );
           }
         }
       }
       created.checklist = true;
+    }
+
+    // Roteiro inicial, uma vez só: se a gestora apagar tudo depois, o seed não recria.
+    if (!(await tx.get("SELECT 1 FROM settings WHERE key = 'roteiro_padrao_criado'"))) {
+      if (!(await tx.get('SELECT 1 FROM posts WHERE active = 1'))) {
+        for (const p of defaultPosts()) {
+          await tx.run(
+            'INSERT INTO posts (weekday, slot, time, kind, goal, image_prompt, text_prompt) VALUES (?, 0, ?, ?, ?, ?, ?)',
+            [p.weekday, p.time, p.kind, p.goal, p.image_prompt, p.text_prompt],
+          );
+        }
+        created.posts = true;
+      }
+      await tx.run("INSERT INTO settings (key, value) VALUES ('roteiro_padrao_criado', '1')");
     }
   });
 

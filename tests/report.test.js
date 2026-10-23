@@ -5,8 +5,19 @@ import { failureRanking, taskKey } from '../server/lib/report.js';
 import { buildSnapshot } from '../server/lib/snapshot.js';
 
 // Pontos calculados direto no banco, pelo snapshot de cada dia, sem passar pelo código do painel.
-function pointsFromDb(db) {
-  return db.all(
+// A tarefa de postagens incompleta rende a parte proporcional às postagens feitas.
+async function pointsFromDb(db) {
+  const partial = await db.all(
+    `SELECT d.date, json_extract(t.value, '$.points') AS points, json_array_length(t.value, '$.posts') AS n,
+            (SELECT COUNT(*) FROM post_checks pc WHERE pc.day_id = d.id) AS done
+     FROM day_records d
+     JOIN json_each(d.snapshot, '$.sections') s
+     JOIN json_each(s.value, '$.tasks') t
+     WHERE json_array_length(t.value, '$.posts') > 0
+       AND NOT EXISTS (SELECT 1 FROM task_checks c WHERE c.day_id = d.id AND c.task_id = json_extract(t.value, '$.id'))`,
+  );
+  const extra = new Map(partial.map((r) => [r.date, Math.floor((r.points * r.done) / r.n)]));
+  const rows = await db.all(
       `SELECT d.date, COALESCE(SUM(json_extract(t.value, '$.points')), 0) AS points
        FROM day_records d
        JOIN json_each(d.snapshot, '$.sections') s
@@ -14,6 +25,7 @@ function pointsFromDb(db) {
        JOIN task_checks c ON c.day_id = d.id AND c.task_id = json_extract(t.value, '$.id')
        GROUP BY d.date ORDER BY d.date`,
   );
+  return rows.map((r) => ({ ...r, points: r.points + (extra.get(r.date) ?? 0) }));
 }
 
 test('resumo do período bate com o banco', async () => {
@@ -49,7 +61,7 @@ test('ranking aponta a tarefa mais falha', async () => {
   assert.ok(rest.every((f) => f.missed === 1));
   assert.deepEqual(rest.map((f) => f.task).sort(), [
     'Fechar o dia no app e enviar o resumo',
-    'Post 3 — 17:00 — Feed ou TikTok',
+    'Postagens do dia',
     'Reposição e organização de gôndolas (15 min)',
   ]);
 });

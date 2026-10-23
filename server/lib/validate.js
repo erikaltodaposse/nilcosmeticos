@@ -1,4 +1,6 @@
 // Validação das entradas da gestora. Cada função devolve { value } ou { error } com mensagem em português.
+import { POST_KINDS } from './defaults.js';
+import { isDateKey, weekdayOf } from './date.js';
 
 const AUTO_KINDS = ['check_in', 'check_out', 'close'];
 const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -25,6 +27,7 @@ export function parseChecklist(body) {
     return { error: 'O checklist precisa ter de 1 a 20 blocos.' };
   }
   const seenAuto = new Set();
+  let postsTasks = 0;
   const sections = [];
   for (const [i, raw] of body.sections.entries()) {
     const title = text(raw?.title, { max: 60 });
@@ -41,15 +44,18 @@ export function parseChecklist(body) {
       if (!taskText) return { error: `Escreva o texto da ${where} (até 200 caracteres).` };
       const points = int(t.points, 0, 1000);
       if (points === null) return { error: `Os pontos da ${where} precisam ser um número inteiro de 0 a 1000.` };
-      const postSlot = t.post_slot == null || t.post_slot === '' ? null : int(t.post_slot, 1, 3);
-      if (postSlot === null && !(t.post_slot == null || t.post_slot === '')) {
-        return { error: `O horário de post da ${where} precisa ser 1, 2 ou 3.` };
+      const dueTime = t.due_time == null || t.due_time === '' ? null : t.due_time;
+      if (dueTime !== null && (typeof dueTime !== 'string' || !HHMM_RE.test(dueTime))) {
+        return { error: `O horário da ${where} precisa estar no formato HH:MM.` };
       }
+      const posts = Boolean(t.posts);
       const auto = t.auto == null || t.auto === '' ? null : t.auto;
       if (auto !== null && !AUTO_KINDS.includes(auto)) return { error: `Tipo automático inválido na ${where}.` };
       if (auto && seenAuto.has(auto)) return { error: 'Cada tarefa automática (entrada, saída, fechamento) só pode aparecer uma vez.' };
       if (auto) seenAuto.add(auto);
-      tasks.push({ text: taskText, points, requires_photo: Boolean(t.requires_photo), post_slot: postSlot, auto });
+      if (posts && (auto || t.requires_photo)) return { error: 'A tarefa de postagens não pode ser automática nem exigir foto.' };
+      if (posts && ++postsTasks > 1) return { error: 'Só pode haver uma tarefa de postagens por dia.' };
+      tasks.push({ text: taskText, points, requires_photo: Boolean(t.requires_photo), auto, due_time: posts ? null : dueTime, posts });
     }
     sections.push({ title, subtitle: subtitle || null, tasks });
   }
@@ -97,6 +103,11 @@ export function parseSettings(body) {
     if (typeof body.ponto_exige_nfc !== 'boolean') return { error: 'Opção da etiqueta inválida.' };
     out.ponto_exige_nfc = body.ponto_exige_nfc ? '1' : '0';
   }
+  if ('estilo_marca' in body) {
+    const v = text(body.estilo_marca, { max: 600, required: false });
+    if (v === null) return { error: 'O estilo da marca tem no máximo 600 caracteres.' };
+    out.estilo_marca = v;
+  }
   if ('dias_expediente' in body) {
     const days = parseWeekdayList(body.dias_expediente);
     if (days.error) return days;
@@ -105,20 +116,28 @@ export function parseSettings(body) {
   return { value: out };
 }
 
-/** Um post do roteiro. */
+/** Uma postagem do roteiro: fixa no dia da semana ou programada para uma data. */
 export function parsePost(body) {
-  if (!body || typeof body !== 'object') return { error: 'Envie o post.' };
-  const weekday = int(body.weekday, 0, 6);
-  if (weekday === null) return { error: 'Escolha o dia da semana.' };
-  const slot = int(body.slot, 1, 3);
-  if (slot === null) return { error: 'Escolha o horário (1, 2 ou 3).' };
-  const fields = { channel: 60, product_line: 80, hook: 300, caption: 2000, cta: 300 };
-  const out = { weekday, slot };
-  for (const [key, max] of Object.entries(fields)) {
+  if (!body || typeof body !== 'object') return { error: 'Envie a postagem.' };
+  let date = null;
+  let weekday;
+  if (body.date != null && body.date !== '') {
+    if (!isDateKey(body.date)) return { error: 'Data inválida. Use o formato AAAA-MM-DD.' };
+    date = body.date;
+    weekday = weekdayOf(date);
+  } else {
+    weekday = int(body.weekday, 0, 6);
+    if (weekday === null) return { error: 'Escolha o dia da semana.' };
+  }
+  if (typeof body.time !== 'string' || !HHMM_RE.test(body.time)) return { error: 'Informe o horário no formato HH:MM.' };
+  if (!(body.kind in POST_KINDS)) return { error: 'Escolha o tipo da postagem.' };
+  const out = { date, weekday, time: body.time, kind: body.kind };
+  const fields = { goal: ['objetivo', 120], image_prompt: ['prompt da imagem', 2000], text_prompt: ['prompt do texto', 2000] };
+  for (const [key, [label, max]] of Object.entries(fields)) {
     const v = text(body[key], { max, required: false });
-    if (v === null) return { error: `O campo ${key} tem no máximo ${max} caracteres.` };
+    if (v === null) return { error: `O ${label} tem no máximo ${max} caracteres.` };
     out[key] = v || null;
   }
-  if (!out.hook && !out.caption) return { error: 'Preencha pelo menos o gancho ou a legenda.' };
+  if (!out.image_prompt && !out.text_prompt) return { error: 'Preencha pelo menos um prompt: o da imagem ou o do texto.' };
   return { value: out };
 }

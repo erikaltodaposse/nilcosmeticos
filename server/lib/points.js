@@ -8,13 +8,26 @@ export const BONUS_TIERS = [
   { id: 'abaixo', label: 'Abaixo', min: 0, share: 0 },
 ];
 
-/** Pontos do dia a partir do snapshot e dos ids marcados. Ids que não estão no snapshot são ignorados. */
-export function dayPoints(snapshot, checkedTaskIds) {
+/** Pontos já ganhos numa tarefa de postagens: proporcionais às postagens feitas, arredondados para baixo. */
+export function postsPoints(task, donePostIds) {
+  const done = task.posts.filter((p) => donePostIds.has(p.id)).length;
+  return Math.floor((task.points * done) / task.posts.length);
+}
+
+/**
+ * Pontos do dia a partir do snapshot e dos ids marcados. Ids que não estão no snapshot são ignorados.
+ * Na tarefa de postagens ainda incompleta, cada postagem feita (`donePostIds`) rende sua parte.
+ */
+export function dayPoints(snapshot, checkedTaskIds, donePostIds = []) {
   const checked = new Set(checkedTaskIds);
+  const posts = new Set(donePostIds);
   const tasks = snapshotTasks(snapshot);
   const doneTasks = tasks.filter((task) => checked.has(task.id));
+  const partial = tasks
+    .filter((task) => !checked.has(task.id) && task.posts?.length)
+    .reduce((sum, task) => sum + postsPoints(task, posts), 0);
   return {
-    earned: doneTasks.reduce((sum, task) => sum + task.points, 0),
+    earned: doneTasks.reduce((sum, task) => sum + task.points, 0) + partial,
     max: tasks.reduce((sum, task) => sum + task.points, 0),
     done: doneTasks.length,
     total: tasks.length,

@@ -1,12 +1,12 @@
 import express from 'express';
 import { ah, requireRole, sendError } from '../http.js';
-import { todayKey, isDateKey } from '../lib/date.js';
+import { todayKey, isDateKey, weekdayOf } from '../lib/date.js';
 import { logAudit } from '../lib/audit.js';
-import { loadTemplate, createChecklistVersion, getSettings, isLateCheckout } from '../lib/checklist.js';
+import { loadTemplate, createChecklistVersion, getSettings, isLateCheckout, loadPostsFor, refreshTodayPosts } from '../lib/checklist.js';
 import { loadDayRows, summarize, failureRanking, historyRow } from '../lib/report.js';
 import { daysCsv, buildBackup } from '../lib/export.js';
 import { getNfcToken, rotateNfcToken, isNfcRequired } from '../lib/nfc.js';
-import { DEFAULT_SECTIONS, DEFAULT_CLEANING_FOCUS } from '../lib/defaults.js';
+import { DEFAULT_SECTIONS, DEFAULT_CLEANING_FOCUS, MAX_POSTS_PER_DAY } from '../lib/defaults.js';
 import { parseChecklist, parseWeekdayList, parseSettings, parsePost } from '../lib/validate.js';
 
 async function templateResponse(db, weekday) {
@@ -22,8 +22,9 @@ async function templateResponse(db, weekday) {
         text: task.text,
         points: task.points,
         requires_photo: Boolean(task.requires_photo),
-        post_slot: task.post_slot,
         auto: task.auto,
+        due_time: task.due_time,
+        posts: Boolean(task.posts),
       })),
     })),
   };
@@ -39,6 +40,7 @@ async function settingsResponse(db) {
     nome_loja: s.storeName,
     dias_expediente: s.workdays,
     ponto_exige_nfc: s.raw.ponto_exige_nfc === '1',
+    estilo_marca: s.brandStyle,
   };
 }
 
@@ -76,7 +78,7 @@ async function reportQuery(req, res) {
   };
 }
 
-const POST_COLUMNS = 'id, weekday, slot, channel, product_line, hook, caption, cta';
+const POST_COLUMNS = 'id, weekday, date, time, kind, goal, image_prompt, text_prompt';
 
 export function managerRouter() {
   const router = express.Router();
@@ -238,11 +240,31 @@ export function managerRouter() {
     res.json({ checklist: await templateResponse(db, req.weekday) });
   }));
 
-  // ---------- Roteiro de posts ----------
+  // ---------- Roteiro de postagens ----------
+  // Postagem sem data vale toda semana naquele dia; com data, vale só nela e substitui as da semana.
 
+  const postScope = (p) => (p.date ? ['date = ?', [p.date]] : ['date IS NULL AND weekday = ?', [p.weekday]]);
+
+  async function postsInScope(db, p, exceptId = 0) {
+    const [where, args] = postScope(p);
+    return (await db.get(`SELECT COUNT(*) AS n FROM posts WHERE active = 1 AND id <> ? AND ${where}`, [exceptId, ...args])).n;
+  }
+
+  const POST_LIMIT_MSG = `Cada dia aceita até ${MAX_POSTS_PER_DAY} postagens.`;
+  const today = (req) => todayKey(req.app.locals.now());
+
+  // ?from=AAAA-MM-DD&to=AAAA-MM-DD traz também as postagens programadas no período (o calendário do mês).
   router.get('/posts', ah(async (req, res) => {
-    const posts = await req.app.locals.db.all(`SELECT ${POST_COLUMNS} FROM posts WHERE active = 1 ORDER BY weekday, slot, id`);
-    res.json({ posts });
+    const db = req.app.locals.db;
+    const { from, to } = req.query;
+    if ((from && !isDateKey(from)) || (to && !isDateKey(to))) {
+      return sendError(res, 400, 'invalid_date', 'Data inválida. Use o formato AAAA-MM-DD.');
+    }
+    const weekly = await db.all(`SELECT ${POST_COLUMNS} FROM posts WHERE active = 1 AND date IS NULL ORDER BY weekday, time, id`);
+    const dated = from && to
+      ? await db.all(`SELECT ${POST_COLUMNS} FROM posts WHERE active = 1 AND date BETWEEN ? AND ? ORDER BY date, time, id`, [from, to])
+      : [];
+    res.json({ weekly, dated, max_per_day: MAX_POSTS_PER_DAY });
   }));
 
   router.post('/posts', ah(async (req, res) => {
@@ -250,32 +272,73 @@ export function managerRouter() {
     const parsed = parsePost(req.body);
     if (parsed.error) return sendError(res, 400, 'invalid_post', parsed.error);
     const p = parsed.value;
+    if ((await postsInScope(db, p)) >= MAX_POSTS_PER_DAY) return sendError(res, 409, 'too_many_posts', POST_LIMIT_MSG);
     const id = (await db.run(
-      'INSERT INTO posts (weekday, slot, channel, product_line, hook, caption, cta) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [p.weekday, p.slot, p.channel, p.product_line, p.hook, p.caption, p.cta],
+      'INSERT INTO posts (weekday, slot, date, time, kind, goal, image_prompt, text_prompt) VALUES (?, 0, ?, ?, ?, ?, ?, ?)',
+      [p.weekday, p.date, p.time, p.kind, p.goal, p.image_prompt, p.text_prompt],
     )).lastInsertRowid;
+    await refreshTodayPosts(db, today(req));
     await logAudit(db, req.user.id, 'post.create', { id, ...p }, req.app.locals.now());
     res.status(201).json({ post: await db.get(`SELECT ${POST_COLUMNS} FROM posts WHERE id = ?`, [id]) });
   }));
 
+  // Copia o roteiro de um dia (o que a funcionária veria nele) para outras datas, substituindo o que elas tinham.
+  router.post('/posts/copy', ah(async (req, res) => {
+    const db = req.app.locals.db;
+    const { source_date: source, target_dates: targets } = req.body ?? {};
+    if (!isDateKey(source)) return sendError(res, 400, 'invalid_date', 'Escolha o dia de origem.');
+    if (!Array.isArray(targets) || targets.length === 0 || targets.length > 62 || !targets.every(isDateKey)) {
+      return sendError(res, 400, 'invalid_date', 'Escolha de 1 a 62 dias de destino.');
+    }
+    const posts = await loadPostsFor(db, source);
+    if (posts.length === 0) return sendError(res, 409, 'no_posts', 'O dia de origem não tem postagens.');
+    const dates = [...new Set(targets)].filter((d) => d !== source);
+    const statements = [];
+    for (const date of dates) {
+      statements.push(['UPDATE posts SET active = 0 WHERE date = ? AND active = 1', [date]]);
+      for (const p of posts) {
+        statements.push([
+          'INSERT INTO posts (weekday, slot, date, time, kind, goal, image_prompt, text_prompt) VALUES (?, 0, ?, ?, ?, ?, ?, ?)',
+          [weekdayOf(date), date, p.time, p.kind, p.goal, p.image_prompt, p.text_prompt],
+        ]);
+      }
+    }
+    await db.batch(statements);
+    await refreshTodayPosts(db, today(req));
+    await logAudit(db, req.user.id, 'post.copy', { source, targets: dates }, req.app.locals.now());
+    res.json({ copied: posts.length, dates });
+  }));
+
+  // Apaga a programação de uma data: ela volta a usar o roteiro do dia da semana.
+  router.delete('/posts/day/:date', ah(async (req, res) => {
+    const db = req.app.locals.db;
+    if (!isDateKey(req.params.date)) return sendError(res, 400, 'invalid_date', 'Data inválida.');
+    const { changes } = await db.run('UPDATE posts SET active = 0 WHERE date = ? AND active = 1', [req.params.date]);
+    await refreshTodayPosts(db, today(req));
+    await logAudit(db, req.user.id, 'post.clear_date', { date: req.params.date, removed: changes }, req.app.locals.now());
+    res.json({ removed: changes });
+  }));
+
   router.get('/posts/:postId', ah(async (req, res) => {
     const post = await req.app.locals.db.get(`SELECT ${POST_COLUMNS} FROM posts WHERE id = ? AND active = 1`, [req.postId]);
-    if (!post) return sendError(res, 404, 'post_not_found', 'Post não encontrado.');
+    if (!post) return sendError(res, 404, 'post_not_found', 'Postagem não encontrada.');
     res.json({ post });
   }));
 
   router.put('/posts/:postId', ah(async (req, res) => {
     const db = req.app.locals.db;
     if (!(await db.get('SELECT 1 FROM posts WHERE id = ? AND active = 1', [req.postId]))) {
-      return sendError(res, 404, 'post_not_found', 'Post não encontrado.');
+      return sendError(res, 404, 'post_not_found', 'Postagem não encontrada.');
     }
     const parsed = parsePost(req.body);
     if (parsed.error) return sendError(res, 400, 'invalid_post', parsed.error);
     const p = parsed.value;
+    if ((await postsInScope(db, p, req.postId)) >= MAX_POSTS_PER_DAY) return sendError(res, 409, 'too_many_posts', POST_LIMIT_MSG);
     await db.run(
-      'UPDATE posts SET weekday = ?, slot = ?, channel = ?, product_line = ?, hook = ?, caption = ?, cta = ? WHERE id = ?',
-      [p.weekday, p.slot, p.channel, p.product_line, p.hook, p.caption, p.cta, req.postId],
+      'UPDATE posts SET weekday = ?, date = ?, time = ?, kind = ?, goal = ?, image_prompt = ?, text_prompt = ? WHERE id = ?',
+      [p.weekday, p.date, p.time, p.kind, p.goal, p.image_prompt, p.text_prompt, req.postId],
     );
+    await refreshTodayPosts(db, today(req));
     await logAudit(db, req.user.id, 'post.update', { id: req.postId, ...p }, req.app.locals.now());
     res.json({ post: await db.get(`SELECT ${POST_COLUMNS} FROM posts WHERE id = ?`, [req.postId]) });
   }));
@@ -284,7 +347,8 @@ export function managerRouter() {
   router.delete('/posts/:postId', ah(async (req, res) => {
     const db = req.app.locals.db;
     const { changes } = await db.run('UPDATE posts SET active = 0 WHERE id = ? AND active = 1', [req.postId]);
-    if (!changes) return sendError(res, 404, 'post_not_found', 'Post não encontrado.');
+    if (!changes) return sendError(res, 404, 'post_not_found', 'Postagem não encontrada.');
+    await refreshTodayPosts(db, today(req));
     await logAudit(db, req.user.id, 'post.delete', { id: req.postId }, req.app.locals.now());
     res.json({ ok: true });
   }));

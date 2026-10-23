@@ -112,7 +112,7 @@ test('login bloqueia após 5 tentativas erradas', async () => {
 test('seed é idempotente e cria checklist de 150 pontos para cada dia', async () => {
   const { db } = await makeApp();
   const again = await seed(db, { MANAGER_EMAIL: MANAGER.email, MANAGER_PASSWORD: MANAGER.password });
-  assert.deepEqual(again, { manager: false, employee: false, settings: 0, checklist: false });
+  assert.deepEqual(again, { manager: false, employee: false, settings: 0, checklist: false, posts: false });
   const totals = await db.all(
       `SELECT v.weekday, SUM(t.points) AS total, COUNT(*) AS n FROM checklist_tasks t
        JOIN checklist_sections s ON s.id = t.section_id
@@ -121,7 +121,7 @@ test('seed é idempotente e cria checklist de 150 pontos para cada dia', async (
   assert.equal(totals.length, 7);
   for (const row of totals) {
     assert.equal(row.total, 150);
-    assert.equal(row.n, 14);
+    assert.equal(row.n, 12);
   }
   assert.equal((await db.get('SELECT COUNT(*) AS n FROM users')).n, 2);
 });
@@ -146,7 +146,7 @@ test('abrir o dia de hoje congela o snapshot', async () => {
   assert.equal(res.body.is_today, true);
   assert.equal(res.body.editable, true);
   assert.equal(res.body.day.points.max, 150);
-  assert.equal(allTasks(res.body).length, 14);
+  assert.equal(allTasks(res.body).length, 12);
   assert.equal((await db.get('SELECT COUNT(*) AS n FROM day_records')).n, 1);
 });
 
@@ -163,12 +163,14 @@ test('check-in cria snapshot e marca o ponto de entrada', async () => {
   await agent.post(`/api/day/${MONDAY}/checkin`).expect(409);
 });
 
-test('marcar as 14 tarefas fecha 150 pontos', async () => {
+test('marcar as 12 tarefas e as postagens fecha 150 pontos', async () => {
   const { app, clock } = await makeApp();
   const agent = await employeeAgent(app, request);
   let res = await agent.post(`/api/day/${MONDAY}/checkin`).expect(200);
   for (const task of allTasks(res.body).filter((t) => !t.auto)) {
-    if (task.requires_photo) {
+    if (task.posts?.length) {
+      for (const post of task.posts) await agent.put(`/api/day/${MONDAY}/posts/${post.id}`).expect(200);
+    } else if (task.requires_photo) {
       await agent
         .post(`/api/day/${MONDAY}/tasks/${task.id}/photo`)
         .attach('photo', FAKE_JPEG, { filename: 'limpeza.jpg', contentType: 'image/jpeg' })
@@ -183,7 +185,7 @@ test('marcar as 14 tarefas fecha 150 pontos', async () => {
   assert.equal(res.body.day.points.earned, 145);
 
   res = await agent.post(`/api/day/${MONDAY}/close`).expect(200);
-  assert.deepEqual(res.body.day.points, { earned: 150, max: 150, done: 14, total: 14, meta: 150 });
+  assert.deepEqual(res.body.day.points, { earned: 150, max: 150, done: 12, total: 12, meta: 150 });
   assert.equal(res.body.editable, false);
 
   const task = allTasks(res.body).find((t) => !t.auto);

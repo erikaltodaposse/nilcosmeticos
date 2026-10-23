@@ -22,8 +22,8 @@ test('exportação CSV tem BOM e cabeçalho correto', async () => {
   assert.equal(lines[0], CSV_HEADER.join(';'));
   assert.equal(lines[0], 'data;dia_semana;funcionaria;entrada;saida;saida_apos_tolerancia;fechado_as;pontos;meta;percentual_meta;tarefas_cumpridas;tarefas_total;fotos;pendentes');
   assert.equal(lines.length, 5); // cabeçalho + 4 dias
-  assert.equal(lines[1], '26/10/2026;segunda;Ana;13:00;18:05;não;18:05;150;150;100;14;14;2;');
-  assert.equal(lines[3], '28/10/2026;quarta;Ana;13:00;18:20;sim;;125;150;83,3;12;14;1;Limpeza final: hall e entrada | Fechar o dia no app e enviar o resumo');
+  assert.equal(lines[1], '26/10/2026;segunda;Ana;13:00;18:05;não;18:05;150;150;100;12;12;2;');
+  assert.equal(lines[3], '28/10/2026;quarta;Ana;13:00;18:20;sim;;125;150;83,3;10;12;1;Limpeza final: hall e entrada | Fechar o dia no app e enviar o resumo');
 });
 
 test('backup restaurado em banco limpo reproduz os mesmos números', async () => {

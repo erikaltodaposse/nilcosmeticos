@@ -112,6 +112,54 @@ const MIGRATIONS = [
   UPDATE checklist_tasks SET auto = 'check_out' WHERE text = 'Bater ponto de saída';
   UPDATE checklist_tasks SET auto = 'close' WHERE text = 'Fechar o dia no app e enviar o resumo';
   `,
+  // Horário por tarefa e postagens do dia numa tarefa só, com roteiro de prompts (pedido do Erik, 23/10).
+  `
+  ALTER TABLE checklist_tasks ADD COLUMN due_time TEXT;
+  ALTER TABLE checklist_tasks ADD COLUMN posts INTEGER NOT NULL DEFAULT 0;
+
+  UPDATE checklist_tasks
+     SET points = (SELECT SUM(t2.points) FROM checklist_tasks t2
+                    WHERE t2.section_id = checklist_tasks.section_id AND t2.post_slot IS NOT NULL AND t2.active = 1),
+         text = 'Postagens do dia', posts = 1
+   WHERE post_slot = 1 AND active = 1;
+  UPDATE checklist_tasks SET active = 0 WHERE post_slot IN (2, 3);
+  UPDATE checklist_tasks SET post_slot = NULL;
+
+  UPDATE checklist_tasks SET due_time = CASE text
+    WHEN 'Bater ponto de entrada' THEN '13:00'
+    WHEN 'Abrir a loja: luzes, som, vitrine e balcão' THEN '13:05'
+    WHEN 'Postar "Boa tarde" no Grupo VIP' THEN '13:15'
+    WHEN 'Conferir caixa, troco e organização do balcão' THEN '13:20'
+    WHEN 'Limpeza do foco do dia: {foco}' THEN '14:00'
+    WHEN 'Reposição e organização de gôndolas (15 min)' THEN '15:00'
+    WHEN 'Limpeza final: hall e entrada' THEN '17:30'
+    WHEN 'Fechamento de caixa e relatório do dia' THEN '17:45'
+    WHEN 'Apoiar o fechamento da loja com a gestora' THEN '17:55'
+    WHEN 'Bater ponto de saída' THEN '18:00'
+    WHEN 'Fechar o dia no app e enviar o resumo' THEN '18:05'
+  END WHERE due_time IS NULL;
+
+  ALTER TABLE posts ADD COLUMN time TEXT;
+  ALTER TABLE posts ADD COLUMN kind TEXT;
+  ALTER TABLE posts ADD COLUMN goal TEXT;
+  ALTER TABLE posts ADD COLUMN image_prompt TEXT;
+  ALTER TABLE posts ADD COLUMN text_prompt TEXT;
+  -- Com data, a postagem vale só naquele dia e substitui o roteiro do dia da semana.
+  ALTER TABLE posts ADD COLUMN date TEXT;
+  CREATE INDEX idx_posts_date ON posts(date);
+  UPDATE posts SET time = CASE slot WHEN 1 THEN '13:30' WHEN 2 THEN '15:30' ELSE '17:00' END,
+                   kind = CASE slot WHEN 1 THEN 'grupo_vip' WHEN 2 THEN 'stories' ELSE 'feed' END,
+                   goal = hook,
+                   text_prompt = TRIM(COALESCE(caption, '') || CASE WHEN cta IS NULL THEN '' ELSE char(10) || cta END);
+
+  CREATE TABLE post_checks (
+    id INTEGER PRIMARY KEY,
+    day_id INTEGER NOT NULL REFERENCES day_records(id),
+    post_id INTEGER NOT NULL,
+    done_at TEXT NOT NULL,
+    UNIQUE (day_id, post_id)
+  );
+  `,
 ];
 
 /**
