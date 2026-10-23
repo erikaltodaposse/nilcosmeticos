@@ -46,5 +46,14 @@ export const api = {
     form.append('photo', blob, 'foto.jpg');
     return call('POST', `/api/day/${date}/tasks/${taskId}/photo`, form);
   },
+  getChecklist: (weekday) => call('GET', `/api/manager/checklist/${weekday}`),
+  saveChecklist: (weekday, body) => call('PUT', `/api/manager/checklist/${weekday}`, body),
+  restoreChecklist: (weekday) => call('POST', `/api/manager/checklist/${weekday}/restore`),
+  getSettings: () => call('GET', '/api/manager/settings'),
+  saveSettings: (body) => call('PUT', '/api/manager/settings', body),
+  listPosts: () => call('GET', '/api/manager/posts'),
+  createPost: (body) => call('POST', '/api/manager/posts', body),
+  updatePost: (id, body) => call('PUT', `/api/manager/posts/${id}`, body),
+  deletePost: (id) => call('DELETE', `/api/manager/posts/${id}`),
   photoUrl: (date, taskId, version) => `/api/day/${date}/tasks/${taskId}/photo?v=${encodeURIComponent(version || '')}`,
 };

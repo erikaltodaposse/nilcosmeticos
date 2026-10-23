@@ -89,10 +89,22 @@ Cada linha: decisão — justificativa.
 37. **Resumo do WhatsApp montado no servidor** (`summary.text` e `summary.whatsapp_url` na resposta do dia) — mesmo texto em qualquer aparelho e testável.
 38. **Fechar o dia passa por uma tela de conferência** com as pendências antes de confirmar — o fechamento é irreversível para a funcionária.
 
+39. **Fase 5 feita antes da Fase 4** — o Erik escolheu priorizar o cadastro de tarefas.
+40. **O editor salva o checklist inteiro do dia** (`PUT`) como nova versão; tarefas recebem ids novos e os dias registrados seguem no snapshot antigo.
+41. **"Aplicar também a" outros dias de expediente** (`also_weekdays`) — o checklist é quase igual de segunda a sexta; cada dia mantém o próprio foco de limpeza.
+42. **Nova rota `POST /api/manager/checklist/:weekday/restore`** para o botão "restaurar padrão" — o brief pede o botão, mas não lista a rota.
+43. **Roteiro com `GET /api/manager/posts`, `POST` e `DELETE`**, além do `GET/PUT /:id` do brief — sem eles não há como cadastrar o roteiro enquanto o protótipo não chega. Exclusão é lógica (`active = 0`).
+44. **Mais de um post por horário é permitido** ("adicionar outra opção") — dá alternativa de texto para a funcionária.
+45. **Tarefas automáticas (entrada, saída, fechamento) têm texto e pontos editáveis, mas o tipo não muda no editor** — evita quebrar o ponto por engano; cada tipo aparece no máximo uma vez.
+46. **Ajustes incluem os dias de expediente** e o bônus aceita vírgula decimal.
+47. **Toda alteração da gestora (checklist, restaurar, ajustes, roteiro) grava `audit_log`.**
+48. **Gestão em abas Tarefas, Roteiro e Ajustes**; o Painel entra como primeira aba na Fase 4.
+
 ## 6. Pendências
 
 - **Protótipo `checkpoint-nil/index.html` não foi enviado.** Sem ele faltam: os 19 registros do roteiro de posts (tabela `posts` está vazia), subtítulos das seções e referências de texto e layout. Quando chegar, vai para `referencia/prototipo.html`.
 - Pasta `deploy/` fica para a Fase 7, como no plano do brief.
+- Fase 4 (painel da gestora) e Fase 6 (exportação e polimento) ainda não feitas.
 
 ## 7. Perguntas respondidas (23/10/2026)
 

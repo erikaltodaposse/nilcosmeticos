@@ -8,11 +8,21 @@ export function h(tag, attrs = {}, ...children) {
     else if (key === 'class') el.className = value;
     else el.setAttribute(key, value === true ? '' : value);
   }
-  for (const child of children.flat()) {
-    if (child == null || child === false) continue;
+  return appendChildren(el, children);
+}
+
+function appendChildren(el, children) {
+  for (const child of children.flat(Infinity)) {
+    if (child == null || child === false || child === '') continue;
     el.append(child instanceof Node ? child : document.createTextNode(String(child)));
   }
   return el;
+}
+
+/** Troca o conteúdo de um elemento, ignorando filhos vazios (null, false) como h(). */
+export function fill(el, ...children) {
+  el.replaceChildren();
+  return appendChildren(el, children);
 }
 
 export function showError(box, message) {

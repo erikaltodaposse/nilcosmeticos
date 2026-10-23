@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { h, showError } from '../dom.js';
+import { h, fill, showError } from '../dom.js';
 import { formatDateKey, formatTime } from '../format.js';
 import { header } from './layout.js';
 import { compressPhoto } from '../photo.js';
@@ -319,7 +319,8 @@ export function todayView({ date, onLogout }) {
       return;
     }
     const { day } = state;
-    body.replaceChildren(
+    fill(
+      body,
       error,
       status,
       fileInput,
