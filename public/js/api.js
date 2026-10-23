@@ -34,4 +34,10 @@ export const api = {
   logout: () => call('POST', '/api/auth/logout'),
   changePin: (currentPin, newPin) =>
     call('POST', '/api/auth/change-pin', { current_pin: currentPin, new_pin: newPin }),
+  day: (date) => call('GET', `/api/day/${date}`),
+  checkIn: (date) => call('POST', `/api/day/${date}/checkin`),
+  checkOut: (date) => call('POST', `/api/day/${date}/checkout`),
+  markTask: (date, taskId) => call('PUT', `/api/day/${date}/tasks/${taskId}`),
+  unmarkTask: (date, taskId) => call('DELETE', `/api/day/${date}/tasks/${taskId}`),
+  closeDay: (date) => call('POST', `/api/day/${date}/close`),
 };

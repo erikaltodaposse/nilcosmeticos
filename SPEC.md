@@ -73,6 +73,15 @@ Cada linha: decisão — justificativa.
 23. **Nova configuração `dias_expediente`** (padrão `1,2,3,4,5`) — resposta 4; a tela Hoje e o check-in vão recusar dia sem expediente.
 24. **Check-in e check-out marcam sozinhos "Bater ponto de entrada" e "Bater ponto de saída"** — resposta 3; essas tarefas não terão botão próprio.
 
+25. **Coluna `checklist_tasks.auto`** (migração 2: `check_in`, `check_out`, `close`) — identifica as tarefas marcadas pelo sistema sem depender do texto; essas tarefas recusam marcação manual (`409 auto_task`).
+26. **Abrir a tela de hoje já cria o registro do dia e congela o snapshot** — o brief 7.2 inclui "abertura da tela do dia"; dia sem nenhum check não conta como trabalhado.
+27. **Rotas de escrita só aceitam a data de hoje e dia com expediente** (`409 not_today`, `409 no_workday`) — garante a imutabilidade do passado (7.6).
+28. **`POST /api/day/:date/close` adiantado da Fase 3, em versão simples** — exige saída registrada, marca "Fechar o dia" e trava o dia; sem ele o aceite "14 tarefas = 150 pontos" não fecha. A Fase 3 acrescenta a exigência de foto e o resumo para WhatsApp.
+29. **Foto ainda não é exigida para marcar as limpezas** — a exigência e o upload são da Fase 3; a tela já mostra a etiqueta "Exige foto".
+30. **Gestora consulta `GET /api/day/:date` da funcionária** (por `?user_id` ou a primeira funcionária ativa), só leitura — base para o detalhe do dia na Fase 4.
+31. **Faixa de bônus compara o percentual inteiro** (94,9% é Prata) — o brief define as faixas em inteiros (88% a 94%).
+32. **`/api/me` devolve também `today`** — o app usa a data do servidor, no fuso da loja, em vez do relógio do aparelho.
+
 ## 6. Pendências
 
 - **Protótipo `checkpoint-nil/index.html` não foi enviado.** Sem ele faltam: os 19 registros do roteiro de posts (tabela `posts` está vazia), subtítulos das seções e referências de texto e layout. Quando chegar, vai para `referencia/prototipo.html`.

@@ -7,7 +7,7 @@ export function header({ title = 'Checkpoint', subtitle, actions } = {}) {
     h(
       'div',
       { class: 'header-row' },
-      h('div', {}, h('h1', { class: 'brand' }, title, ' ', h('span', {}, 'Nil')), subtitle && h('p', { class: 'sub' }, subtitle)),
+      h('div', {}, h('h1', { class: 'brand' }, title, title === 'Checkpoint' && [' ', h('span', {}, 'Nil')]), subtitle && h('p', { class: 'sub' }, subtitle)),
       actions,
     ),
   );
