@@ -14,10 +14,30 @@ function mount(view, title) {
 
 let today = null;
 
+// Link da etiqueta NFC (/ponto/<código>): guarda o código até a funcionária entrar e tira-o da barra de endereço.
+const NFC_KEY = 'nfc_token';
+let pendingNfc = null;
+const nfcMatch = window.location.pathname.match(/^\/ponto\/([A-Za-z0-9_-]{32})$/);
+if (nfcMatch) {
+  pendingNfc = nfcMatch[1];
+  try { sessionStorage.setItem(NFC_KEY, pendingNfc); } catch { /* navegação privada: fica só na memória */ }
+  window.history.replaceState(null, '', '/');
+} else {
+  try { pendingNfc = sessionStorage.getItem(NFC_KEY); } catch { /* idem */ }
+}
+
+function takeNfc() {
+  const token = pendingNfc;
+  pendingNfc = null;
+  try { sessionStorage.removeItem(NFC_KEY); } catch { /* idem */ }
+  return token;
+}
+
 function route(user) {
   if (!user) return mount(loginView({ onLogin: (u) => refresh(u) }), 'Entrar');
   if (user.must_change_pin) return mount(changePinView({ user, onDone: (u) => refresh(u), onLogout: logout }), 'Criar PIN');
-  if (user.role === 'employee') return mount(todayView({ user, date: today, onLogout: logout }), 'Hoje');
+  if (user.role === 'employee') return mount(todayView({ user, date: today, nfcToken: takeNfc(), onLogout: logout }), 'Hoje');
+  takeNfc();
   mount(managerView({ user, today, onLogout: logout }), 'Gestão');
 }
 

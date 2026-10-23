@@ -36,8 +36,10 @@ export const api = {
   changePin: (currentPin, newPin) =>
     call('POST', '/api/auth/change-pin', { current_pin: currentPin, new_pin: newPin }),
   day: (date) => call('GET', `/api/day/${date}`),
-  checkIn: (date) => call('POST', `/api/day/${date}/checkin`),
-  checkOut: (date) => call('POST', `/api/day/${date}/checkout`),
+  checkIn: (date, nfcToken) => call('POST', `/api/day/${date}/checkin`, nfcToken ? { nfc_token: nfcToken } : undefined),
+  checkOut: (date, nfcToken) => call('POST', `/api/day/${date}/checkout`, nfcToken ? { nfc_token: nfcToken } : undefined),
+  nfc: () => call('GET', '/api/manager/nfc'),
+  rotateNfc: () => call('POST', '/api/manager/nfc/rotate'),
   markTask: (date, taskId) => call('PUT', `/api/day/${date}/tasks/${taskId}`),
   unmarkTask: (date, taskId) => call('DELETE', `/api/day/${date}/tasks/${taskId}`),
   closeDay: (date) => call('POST', `/api/day/${date}/close`),

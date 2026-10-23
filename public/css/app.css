@@ -308,3 +308,10 @@ a.btn { text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* ---------- Ponto pela etiqueta ---------- */
+.nfc-hint { margin: 0; }
+.nfc-confirm { background: var(--pink-100); border-radius: 20px; padding: 14px; }
+.nfc-confirm .big { margin-top: 0; text-align: center; }
+[tabindex="-1"]:focus { outline: none; }
+.check-field input { flex: none; }

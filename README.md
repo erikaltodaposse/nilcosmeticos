@@ -78,6 +78,12 @@ use `npm run migrate`.
 | `npm test` | Testes (`node:test` + `supertest`). |
 | `npm run lint` | ESLint. |
 
+## Ponto pela etiqueta NFC
+
+Em **Gestão → Ajustes → Etiqueta NFC do ponto** aparece o link para gravar numa etiqueta NFC comum (com o app gratuito NFC Tools: Escrever → Adicionar registro → URL). Encostar o celular na etiqueta abre o app: a entrada é registrada na hora e a saída pede confirmação. Depois de testar, ligue **"Exigir a etiqueta para registrar entrada e saída"**: a partir daí o botão comum deixa de valer. "Gerar novo código" invalida a etiqueta antiga. Detalhes em `SPEC.md`, seção 8.
+
+O link da etiqueta usa o domínio em que a gestora abriu o app. Em produção, gere e grave o link já pelo endereço `https://` definitivo.
+
 ## Exportação e backup pelo app
 
 No Painel da gestora, o cartão **Exportar** tem:
