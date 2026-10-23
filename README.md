@@ -50,7 +50,7 @@ Abra `http://localhost:3000`. Para testar no celular, use `http://IP-DA-MAQUINA:
 | `EMPLOYEE_NAME` | não | Nome exibido da funcionária. Padrão `Funcionária`. |
 | `TURSO_DATABASE_URL` | na Vercel | Endereço do banco no Turso (`libsql://...`). Em branco, usa o arquivo `DATA_DIR/app.db`. |
 | `TURSO_AUTH_TOKEN` | na Vercel | Token de acesso ao banco do Turso. |
-| `BLOB_READ_WRITE_TOKEN` | na Vercel | Criado sozinho ao conectar um Vercel Blob ao projeto. Em branco, as fotos ficam em `DATA_DIR/uploads`. |
+| `BLOB_STORE_ID` ou `BLOB_READ_WRITE_TOKEN` | na Vercel | Criadas sozinhas ao conectar um Vercel Blob ao projeto (a primeira usa OIDC). Sem nenhuma, as fotos ficam em `DATA_DIR/uploads`. |
 | `TZ` | não | Use `America/Manaus`. O código já calcula datas nesse fuso de qualquer jeito. |
 
 ## Seed
@@ -114,7 +114,8 @@ plano gratuito) e as fotos no **Vercel Blob**. O repositório já traz `vercel.j
    o endereço `libsql://...` e um token (botão "Create Token" no painel do banco, ou
    `turso db show --url <nome>` e `turso db tokens create <nome>` na linha de comando).
 2. **Fotos no Blob.** No projeto da Vercel, abra Storage, crie um Blob store e conecte ao projeto. A variável
-   `BLOB_READ_WRITE_TOKEN` é criada sozinha.
+   a Vercel cria sozinha a `BLOB_STORE_ID` (acesso por OIDC) ou, em contas antigas, a
+   `BLOB_READ_WRITE_TOKEN`. O app aceita as duas.
 3. **Variáveis.** Em Settings, Environment Variables, cadastre para Production:
    - `TURSO_DATABASE_URL` e `TURSO_AUTH_TOKEN` (passo 1);
    - `SESSION_SECRET` com 64 caracteres aleatórios (por exemplo, a saída de

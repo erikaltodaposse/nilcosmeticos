@@ -9,7 +9,7 @@ let appPromise = null;
 
 function getApp() {
   if (!config.tursoUrl) throw new Error('Defina TURSO_DATABASE_URL e TURSO_AUTH_TOKEN nas variáveis da Vercel.');
-  if (!config.blobToken) throw new Error('Conecte um Vercel Blob ao projeto (BLOB_READ_WRITE_TOKEN).');
+  if (!config.blobToken && !config.blobStoreId) throw new Error('Conecte um Vercel Blob ao projeto (BLOB_STORE_ID ou BLOB_READ_WRITE_TOKEN).');
   appPromise ??= openDb().then(async (db) => {
     // Com MANAGER_EMAIL e MANAGER_PASSWORD na Vercel, o seed roda na subida. Ele não sobrescreve nada que já exista.
     if (process.env.MANAGER_EMAIL && process.env.MANAGER_PASSWORD) await seed(db);

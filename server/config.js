@@ -30,5 +30,7 @@ export const config = {
   tursoUrl: process.env.TURSO_DATABASE_URL || '',
   tursoToken: process.env.TURSO_AUTH_TOKEN || '',
   blobToken: findBlobToken(),
+  // Projetos conectados ao Blob por OIDC recebem só o BLOB_STORE_ID; o SDK busca a credencial sozinho.
+  blobStoreId: process.env.BLOB_STORE_ID || '',
   onVercel: Boolean(process.env.VERCEL),
 };

@@ -52,7 +52,8 @@ export function diskPhotoStore(uploadsDir) {
   };
 }
 
-export function blobPhotoStore(token) {
+/** Sem `token`, o SDK usa o OIDC da Vercel com o BLOB_STORE_ID. */
+export function blobPhotoStore(token = undefined) {
   const isBlobUrl = (ref) => {
     try {
       const url = new URL(ref);

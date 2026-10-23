@@ -18,7 +18,9 @@ export function createApp({
   sessionSecret,
   secureCookies = config.isProduction,
   publicDir = config.publicDir,
-  photos = config.blobToken ? blobPhotoStore(config.blobToken) : diskPhotoStore(config.uploadsDir),
+  photos = config.blobToken || config.blobStoreId
+    ? blobPhotoStore(config.blobToken || undefined)
+    : diskPhotoStore(config.uploadsDir),
   trustProxy = config.onVercel ? 1 : 'loopback',
   now = () => new Date(),
 }) {
