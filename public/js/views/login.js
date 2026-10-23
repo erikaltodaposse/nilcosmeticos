@@ -1,6 +1,6 @@
 import { api } from '../api.js';
 import { h, showError, busy } from '../dom.js';
-import { header } from './layout.js';
+import { loginHeader } from './layout.js';
 
 export function loginView({ onLogin }) {
   let mode = 'pin';
@@ -83,7 +83,7 @@ export function loginView({ onLogin }) {
   const root = h(
     'div',
     {},
-    header({ title: 'Checkpoint', subtitle: 'Rotina e conferência da loja' }),
+    loginHeader(),
     h(
       'div',
       { class: 'container' },

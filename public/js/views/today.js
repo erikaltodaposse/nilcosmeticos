@@ -30,6 +30,22 @@ function progressRing(earned, meta) {
   }
   track.setAttribute('class', 'ring-track');
   bar.setAttribute('class', 'ring-bar');
+  bar.setAttribute('stroke', 'url(#ring-grad)');
+  const defs = document.createElementNS(ns, 'defs');
+  const grad = document.createElementNS(ns, 'linearGradient');
+  grad.setAttribute('id', 'ring-grad');
+  grad.setAttribute('x1', '0');
+  grad.setAttribute('y1', '0');
+  grad.setAttribute('x2', '1');
+  grad.setAttribute('y2', '1');
+  for (const [offset, color] of [['0', '#F49BB8'], ['0.5', '#E0307A'], ['1', '#930338']]) {
+    const stop = document.createElementNS(ns, 'stop');
+    stop.setAttribute('offset', offset);
+    stop.setAttribute('stop-color', color);
+    grad.append(stop);
+  }
+  defs.append(grad);
+  svg.append(defs);
   bar.setAttribute('stroke-dasharray', `${c * ratio} ${c}`);
   bar.setAttribute('transform', 'rotate(-90 60 60)');
   bar.setAttribute('stroke-linecap', 'round');
@@ -42,7 +58,7 @@ function progressRing(earned, meta) {
   );
 }
 
-export function todayView({ date, onLogout }) {
+export function todayView({ user, date, onLogout }) {
   let state = null;
   const openPosts = new Set();
   let pending = false;
@@ -77,7 +93,7 @@ export function todayView({ date, onLogout }) {
     {},
     header({
       title: 'Hoje',
-      subtitle: formatDateKey(date),
+      subtitle: `Oi, ${user.name.split(' ')[0]}! ${formatDateKey(date).replace(/^./, (c) => c.toUpperCase())}`,
       actions: h('button', { class: 'btn btn-ghost', type: 'button', onclick: onLogout }, 'Sair'),
     }),
     body,
@@ -134,8 +150,20 @@ export function todayView({ date, onLogout }) {
       ),
       day.late_checkout &&
         h('p', { class: 'flag' }, `Saída registrada depois de ${settings.turno_fim} com mais de 10 minutos de tolerância.`),
-      action,
+      goalMessage(p, Boolean(day.closed_at)),
+      action && h('div', { class: 'mt' }, action),
     );
+  }
+
+  function goalMessage(p, closed) {
+    const left = p.meta - p.earned;
+    if (left <= 0) {
+      return h('p', { class: 'goal-msg done', role: 'status' }, h('span', { class: 'script' }, 'Meta batida!'),
+        closed ? 'Arrasou hoje. Bom descanso.' : 'Arrasou hoje. Agora é só fechar o dia.');
+    }
+    if (closed) return h('p', { class: 'goal-msg' }, `Dia fechado com ${p.earned} pontos. Amanhã tem mais.`);
+    if (p.earned === 0) return h('p', { class: 'goal-msg' }, `Bora começar? A meta é ${p.meta} pontos.`);
+    return h('p', { class: 'goal-msg' }, `Faltam ${left} pontos para a meta.`);
   }
 
   function postPanel(slot) {
@@ -330,7 +358,16 @@ export function todayView({ date, onLogout }) {
         h(
           'section',
           { class: 'card', 'aria-labelledby': `sec-${i}` },
-          h('h2', { id: `sec-${i}` }, section.title),
+          h(
+            'div',
+            { class: 'sec-head' },
+            h('h2', { id: `sec-${i}` }, section.title),
+            h(
+              'span',
+              { class: `sec-count${section.tasks.every((t) => t.done) ? ' full' : ''}`, 'aria-label': `${section.tasks.filter((t) => t.done).length} de ${section.tasks.length} feitas` },
+              `${section.tasks.filter((t) => t.done).length}/${section.tasks.length}`,
+            ),
+          ),
           section.subtitle && h('p', { class: 'muted' }, section.subtitle),
           h('ul', { class: 'tasks' }, section.tasks.map(taskRow)),
         ),

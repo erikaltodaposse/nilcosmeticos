@@ -112,6 +112,10 @@ Cada linha: decisão — justificativa.
 57. **Backup JSON sem a tabela `sessions` e sem as fotos** — sessões são descartáveis; fotos são binárias e vão no `backup.sh` (Fase 7).
 58. **`npm run restore` só restaura em banco vazio** e recusa backup de versão de banco mais nova — evita misturar dados.
 
+59. **Visual refeito a partir da logo da Nil** (pedido do Erik, 23/10): rosa-pink, magenta e blush no lugar do vinho e dourado do brief; tom mais leve e jovem para a funcionária, com mensagens de incentivo ("Faltam X pontos", "Meta batida!") e contador por bloco. Contraste AA conferido nos textos; o rosa claro fica só em elementos decorativos.
+60. **Fontes Nunito e Great Vibes servidas pelo próprio app** (`public/fonts`, licença OFL) — sem CDN, como o brief exige; Great Vibes só nos títulos curtos do cabeçalho.
+61. **Logo em `public/img/logo.jpg` (320 px, 23 KB)** e ícones derivados — dentro do limite de 300 KB por imagem.
+
 ## 6. Pendências
 
 - **Protótipo `checkpoint-nil/index.html` não foi enviado.** Sem ele faltam: os 19 registros do roteiro de posts (tabela `posts` está vazia), subtítulos das seções e referências de texto e layout. Quando chegar, vai para `referencia/prototipo.html`.
