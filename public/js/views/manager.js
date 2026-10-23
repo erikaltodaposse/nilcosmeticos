@@ -15,7 +15,7 @@ const TABS = [
 export function managerView({ user, today, onLogout }) {
   let current = null;
   let guard = null; // a aba atual pode impedir a troca se houver alteração não salva
-  const content = h('div', { class: 'container' });
+  const content = h('div', { class: 'container', role: 'tabpanel' });
   const buttons = TABS.map((tab) =>
     h('button', { type: 'button', class: 'tab', role: 'tab', id: `mtab-${tab.id}`, onclick: () => open(tab.id) }, tab.label),
   );
@@ -25,6 +25,7 @@ export function managerView({ user, today, onLogout }) {
     if (guard && !guard()) return;
     current = id;
     TABS.forEach((tab, i) => buttons[i].setAttribute('aria-selected', String(tab.id === id)));
+    content.setAttribute('aria-labelledby', `mtab-${id}`);
     const tab = TABS.find((t) => t.id === id);
     guard = null;
     content.replaceChildren(tab.view({ today, setGuard: (fn) => { guard = fn; } }));

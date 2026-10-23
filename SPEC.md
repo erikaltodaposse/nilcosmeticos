@@ -108,11 +108,15 @@ Cada linha: decisão — justificativa.
 54. **Detalhe do dia reaproveita `GET /api/day/:date`** com a sessão da gestora; fotos ampliam num `<dialog>`.
 55. **Rotas do painel aceitam `?user_id`** e, sem ele, usam a primeira funcionária ativa — a interface é de uma funcionária, mas o modelo não impede outras.
 
+56. **CSV com `;` e vírgula decimal**, BOM UTF-8 e `\r\n` — abre certo no Excel em português sem importação manual.
+57. **Backup JSON sem a tabela `sessions` e sem as fotos** — sessões são descartáveis; fotos são binárias e vão no `backup.sh` (Fase 7).
+58. **`npm run restore` só restaura em banco vazio** e recusa backup de versão de banco mais nova — evita misturar dados.
+
 ## 6. Pendências
 
 - **Protótipo `checkpoint-nil/index.html` não foi enviado.** Sem ele faltam: os 19 registros do roteiro de posts (tabela `posts` está vazia), subtítulos das seções e referências de texto e layout. Quando chegar, vai para `referencia/prototipo.html`.
 - Pasta `deploy/` fica para a Fase 7, como no plano do brief.
-- Fase 6 (exportação CSV, backup JSON e polimento) e Fase 7 (deploy) ainda não feitas.
+- Fase 7 (deploy) ainda não feita.
 
 ## 7. Perguntas respondidas (23/10/2026)
 

@@ -6,7 +6,8 @@ import { todayView } from './views/today.js';
 
 const root = document.getElementById('app');
 
-function mount(view) {
+function mount(view, title) {
+  document.title = title ? `${title} · Checkpoint Nil` : 'Checkpoint Nil';
   root.replaceChildren(view);
   window.scrollTo(0, 0);
 }
@@ -14,10 +15,10 @@ function mount(view) {
 let today = null;
 
 function route(user) {
-  if (!user) return mount(loginView({ onLogin: (u) => refresh(u) }));
-  if (user.must_change_pin) return mount(changePinView({ user, onDone: (u) => refresh(u), onLogout: logout }));
-  if (user.role === 'employee') return mount(todayView({ user, date: today, onLogout: logout }));
-  mount(managerView({ user, today, onLogout: logout }));
+  if (!user) return mount(loginView({ onLogin: (u) => refresh(u) }), 'Entrar');
+  if (user.must_change_pin) return mount(changePinView({ user, onDone: (u) => refresh(u), onLogout: logout }), 'Criar PIN');
+  if (user.role === 'employee') return mount(todayView({ user, date: today, onLogout: logout }), 'Hoje');
+  mount(managerView({ user, today, onLogout: logout }), 'Gestão');
 }
 
 // Relê /api/me para obter a data de hoje segundo o servidor (fuso da loja).

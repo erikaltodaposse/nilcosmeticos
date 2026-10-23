@@ -34,7 +34,8 @@ export function dashboardView({ today }) {
   const kpis = h('section', { class: 'card', 'aria-labelledby': 'kpi-title' });
   const failures = h('section', { class: 'card', 'aria-labelledby': 'fail-title' });
   const history = h('section', { class: 'card', 'aria-labelledby': 'hist-title' });
-  const main = h('div', {}, live, h('section', { class: 'card' }, h('h2', {}, 'Período'), periodChips), kpis, failures, history);
+  const exportCard = h('section', { class: 'card', 'aria-labelledby': 'export-title' });
+  const main = h('div', {}, live, h('section', { class: 'card' }, h('h2', {}, 'Período'), periodChips), kpis, failures, history, exportCard);
   root.append(main);
 
   function query() {
@@ -185,7 +186,20 @@ export function dashboardView({ today }) {
     ));
   }
 
+  function renderExport() {
+    const p = PERIODS.find((x) => x.id === period);
+    fill(
+      exportCard,
+      h('h2', { id: 'export-title' }, 'Exportar'),
+      h('p', { class: 'muted' }, `Planilha com um dia por linha (${p.days ? `últimos ${p.days} dias` : 'todo o histórico'}). Abre direto no Excel.`),
+      h('a', { class: 'btn btn-outline', href: `/api/manager/export.csv?${query()}`, download: '' }, 'Baixar planilha (CSV)'),
+      h('p', { class: 'muted mt' }, 'Backup completo dos registros, tarefas, ajustes e roteiro. Guarde em lugar seguro: as fotos são copiadas à parte pelo backup do servidor.'),
+      h('a', { class: 'btn btn-outline', href: '/api/manager/backup.json', download: '' }, 'Baixar backup (JSON)'),
+    );
+  }
+
   async function loadPeriod() {
+    renderExport();
     const q = query();
     for (const el of [kpis, failures, history]) fill(el, h('p', { class: 'boot' }, 'Carregando…'));
     try {

@@ -4,7 +4,7 @@ Sistema de rotina e conferência da loja Nil Cosméticos. A funcionária registr
 celular; a gestora confere tudo pelo painel. Detalhes de escopo e decisões em [`SPEC.md`](SPEC.md);
 o brief original está em [`PROMPT.md`](PROMPT.md).
 
-> Estado atual: **Fases 1 a 5** (login, tela Hoje, fotos, fechamento com WhatsApp, painel da gestora, editor de tarefas, roteiro e ajustes). Exportação e deploy chegam nas próximas fases.
+> Estado atual: **Fases 1 a 6** (login, tela Hoje, fotos, fechamento com WhatsApp, painel, editor de tarefas, roteiro, ajustes, exportação e backup). O deploy (Fase 7) vem a seguir.
 
 ## Requisitos
 
@@ -74,9 +74,27 @@ use `npm run migrate`.
 | `npm start` | Servidor sem recarga. |
 | `npm run seed` | Popula usuários, configurações e checklist. |
 | `npm run migrate` | Aplica migrações pendentes. |
+| `npm run restore -- arquivo.json` | Restaura um backup JSON num banco vazio. |
 | `npm test` | Testes (`node:test` + `supertest`). |
 | `npm run lint` | ESLint. |
 
-## Deploy e backup
+## Exportação e backup pelo app
 
-Documentados na Fase 7 (pasta `deploy/`).
+No Painel da gestora, o cartão **Exportar** tem:
+
+- **Baixar planilha (CSV)**: um dia por linha no período escolhido, separado por `;`, com BOM UTF-8 (abre direto no Excel).
+- **Baixar backup (JSON)**: todos os registros, tarefas, versões do checklist, ajustes, roteiro e log de auditoria. Não inclui sessões nem os arquivos das fotos.
+
+## Restaurar um backup numa máquina limpa
+
+1. Instale o projeto (`npm install`) e crie o `.env` como acima.
+2. **Não** rode o seed: a restauração exige banco vazio.
+3. Restaure: `npm run restore -- C:\caminho\checkpoint-backup-AAAA-MM-DD.json`
+4. Copie a pasta de fotos (`uploads/`) do backup do servidor para `DATA_DIR/uploads/`.
+5. Suba o servidor (`npm start`). Gestora e funcionária entram com as mesmas credenciais de antes.
+
+O teste `tests/export.test.js` confere que painel, ranking, histórico e CSV saem idênticos depois da restauração.
+
+## Deploy
+
+Documentado na Fase 7 (pasta `deploy/`).
