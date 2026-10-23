@@ -129,3 +129,16 @@ Cada linha: decisão — justificativa.
 3. **Ponto automático:** sim. Check-in e check-out marcam as tarefas de bater ponto.
 4. **Fim de semana:** não há expediente no sábado nem no domingo. A adesão considera só segunda a sexta.
 5. **Falta da funcionária:** o dia fica sem registro. A gestora só corrige o passado pela rota de correção, com `audit_log`.
+
+## 8. Adendo ao brief: ponto por etiqueta NFC (pedido do Erik, 23/10/2026)
+
+Objetivo: provar que a entrada e a saída foram registradas na loja, sem app nativo e sem hardware além de uma etiqueta NFC comum.
+
+- A etiqueta, colada na loja, guarda um link do app: `https://<domínio>/ponto/<código>`. O código é aleatório (32 caracteres) e fica em `settings.nfc_token`.
+- Encostar o celular na etiqueta abre o link no navegador (iPhone e Android leem etiquetas com link sem instalar nada). Se a funcionária não estiver logada, entra com o PIN e o app segue o registro em seguida.
+- Sem entrada registrada, o app registra a entrada na hora. Com entrada e sem saída, pede confirmação antes de registrar a saída, para um toque acidental não encerrar o turno. Com as duas registradas, só informa.
+- A gestora liga em Ajustes a opção **"Exigir a etiqueta para registrar entrada e saída"** (`settings.ponto_exige_nfc`). Ligada, o servidor recusa entrada e saída sem o código certo (`409 nfc_required` ou `409 nfc_invalid`), e o botão comum dá lugar à instrução de encostar o celular na etiqueta. Desligada, os dois caminhos funcionam.
+- Em Ajustes, a gestora vê o link para gravar na etiqueta e pode **gerar um novo código**, o que invalida a etiqueta antiga (útil se o link vazar ou a etiqueta for trocada).
+- Para gravar: app gratuito NFC Tools (Android ou iPhone) → Escrever → Adicionar registro → URL → colar o link → Escrever e encostar a etiqueta.
+- O código entra no backup JSON (tabela `settings`): restaurar mantém a etiqueta funcionando.
+- Limite conhecido: quem copiar o link consegue registrar fora da loja. O link fica só na etiqueta e pode ser trocado a qualquer momento; não há verificação de localização.
