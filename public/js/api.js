@@ -55,5 +55,10 @@ export const api = {
   createPost: (body) => call('POST', '/api/manager/posts', body),
   updatePost: (id, body) => call('PUT', `/api/manager/posts/${id}`, body),
   deletePost: (id) => call('DELETE', `/api/manager/posts/${id}`),
-  photoUrl: (date, taskId, version) => `/api/day/${date}/tasks/${taskId}/photo?v=${encodeURIComponent(version || '')}`,
+  photoUrl: (date, taskId, version, userId) =>
+    `/api/day/${date}/tasks/${taskId}/photo?v=${encodeURIComponent(version || '')}${userId ? `&user_id=${userId}` : ''}`,
+  dayOf: (date, userId) => call('GET', `/api/day/${date}${userId ? `?user_id=${userId}` : ''}`),
+  summary: (query) => call('GET', `/api/manager/summary?${query}`),
+  days: (query) => call('GET', `/api/manager/days?${query}`),
+  failures: (query) => call('GET', `/api/manager/failures?${query}`),
 };

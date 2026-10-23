@@ -4,7 +4,7 @@ Sistema de rotina e conferência da loja Nil Cosméticos. A funcionária registr
 celular; a gestora confere tudo pelo painel. Detalhes de escopo e decisões em [`SPEC.md`](SPEC.md);
 o brief original está em [`PROMPT.md`](PROMPT.md).
 
-> Estado atual: **Fases 1, 2, 3 e 5** (login, tela Hoje, fotos, fechamento com WhatsApp, editor de tarefas, roteiro e ajustes). Painel da gestora, exportação e deploy chegam nas próximas fases.
+> Estado atual: **Fases 1 a 5** (login, tela Hoje, fotos, fechamento com WhatsApp, painel da gestora, editor de tarefas, roteiro e ajustes). Exportação e deploy chegam nas próximas fases.
 
 ## Requisitos
 

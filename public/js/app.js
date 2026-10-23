@@ -17,7 +17,7 @@ function route(user) {
   if (!user) return mount(loginView({ onLogin: (u) => refresh(u) }));
   if (user.must_change_pin) return mount(changePinView({ user, onDone: (u) => refresh(u), onLogout: logout }));
   if (user.role === 'employee') return mount(todayView({ user, date: today, onLogout: logout }));
-  mount(managerView({ user, onLogout: logout }));
+  mount(managerView({ user, today, onLogout: logout }));
 }
 
 // Relê /api/me para obter a data de hoje segundo o servidor (fuso da loja).

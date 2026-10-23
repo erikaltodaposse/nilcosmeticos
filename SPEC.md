@@ -100,11 +100,19 @@ Cada linha: decisão — justificativa.
 47. **Toda alteração da gestora (checklist, restaurar, ajustes, roteiro) grava `audit_log`.**
 48. **Gestão em abas Tarefas, Roteiro e Ajustes**; o Painel entra como primeira aba na Fase 4.
 
+49. **Números do painel só contam dias encerrados** (fechados no app ou anteriores a hoje, com pelo menos um check) — o dia em andamento derrubaria a adesão; ele aparece no histórico como "Em andamento".
+50. **"Sem registro" conta dias de expediente já passados sem nenhum check**, desde o início do período ou, em "Tudo", desde o cadastro da funcionária — mostra faltas sem misturar com a adesão (resposta 5).
+51. **Ranking de falhas agrupa a tarefa pelo texto do template** (o snapshot agora guarda `template_text`, com `{foco}`) — a limpeza do foco é a mesma tarefa em todos os dias, mesmo com focos diferentes.
+52. **Bônus estimado = bônus-base × percentual da faixa**, só exibido.
+53. **Cartão "Hoje" do painel se atualiza a cada 5 s** enquanto a aba está visível — atende ao aceite de ver o registro em menos de 5 segundos.
+54. **Detalhe do dia reaproveita `GET /api/day/:date`** com a sessão da gestora; fotos ampliam num `<dialog>`.
+55. **Rotas do painel aceitam `?user_id`** e, sem ele, usam a primeira funcionária ativa — a interface é de uma funcionária, mas o modelo não impede outras.
+
 ## 6. Pendências
 
 - **Protótipo `checkpoint-nil/index.html` não foi enviado.** Sem ele faltam: os 19 registros do roteiro de posts (tabela `posts` está vazia), subtítulos das seções e referências de texto e layout. Quando chegar, vai para `referencia/prototipo.html`.
 - Pasta `deploy/` fica para a Fase 7, como no plano do brief.
-- Fase 4 (painel da gestora) e Fase 6 (exportação e polimento) ainda não feitas.
+- Fase 6 (exportação CSV, backup JSON e polimento) e Fase 7 (deploy) ainda não feitas.
 
 ## 7. Perguntas respondidas (23/10/2026)
 
