@@ -56,3 +56,10 @@ export function minutesOf(hhmm) {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
 }
+
+/** Soma dias a uma chave YYYY-MM-DD. */
+export function addDays(key, days) {
+  const [y, m, d] = key.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d + days));
+  return date.toISOString().slice(0, 10);
+}

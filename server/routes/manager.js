@@ -1,8 +1,9 @@
 import express from 'express';
 import { requireRole, sendError } from '../http.js';
-import { todayKey } from '../lib/date.js';
+import { todayKey, isDateKey } from '../lib/date.js';
 import { logAudit } from '../lib/audit.js';
-import { loadTemplate, createChecklistVersion, getSettings } from '../lib/checklist.js';
+import { loadTemplate, createChecklistVersion, getSettings, isLateCheckout } from '../lib/checklist.js';
+import { loadDayRows, summarize, failureRanking, historyRow } from '../lib/report.js';
 import { DEFAULT_SECTIONS, DEFAULT_CLEANING_FOCUS } from '../lib/defaults.js';
 import { parseChecklist, parseWeekdayList, parseSettings, parsePost } from '../lib/validate.js';
 
@@ -38,6 +39,40 @@ function settingsResponse(db) {
   };
 }
 
+/** Lê ?from, ?to e ?user_id. Sem from/to, o período é tudo. */
+function reportQuery(req, res) {
+  const db = req.app.locals.db;
+  const { from, to } = req.query;
+  for (const v of [from, to]) {
+    if (v != null && v !== '' && !isDateKey(v)) {
+      sendError(res, 400, 'invalid_date', 'Data inválida. Use o formato AAAA-MM-DD.');
+      return null;
+    }
+  }
+  if (from && to && from > to) {
+    sendError(res, 400, 'invalid_period', 'A data inicial precisa ser antes da final.');
+    return null;
+  }
+  const id = Number(req.query.user_id);
+  const employee = Number.isInteger(id) && id > 0
+    ? db.prepare("SELECT * FROM users WHERE id = ? AND role = 'employee'").get(id)
+    : db.prepare("SELECT * FROM users WHERE role = 'employee' AND active = 1 ORDER BY id LIMIT 1").get();
+  if (!employee) {
+    sendError(res, 404, 'employee_not_found', 'Nenhuma funcionária cadastrada.');
+    return null;
+  }
+  const settings = getSettings(db);
+  return {
+    db,
+    employee,
+    settings,
+    from: from || null,
+    to: to || null,
+    today: todayKey(req.app.locals.now()),
+    isLate: (row) => isLateCheckout(row.check_out_at, settings),
+  };
+}
+
 const POST_COLUMNS = 'id, weekday, slot, channel, product_line, hook, caption, cta';
 
 export function managerRouter() {
@@ -54,6 +89,49 @@ export function managerRouter() {
     if (!/^\d+$/.test(raw)) return sendError(res, 400, 'invalid_post', 'Post inválido.');
     req.postId = Number(raw);
     next();
+  });
+
+  // ---------- Painel ----------
+
+  router.get('/summary', (req, res) => {
+    const q = reportQuery(req, res);
+    if (!q) return;
+    const rows = loadDayRows(q.db, q.employee.id, q.from, q.to);
+    // Sem data inicial, as faltas contam desde o cadastro da funcionária.
+    const from = q.from ?? q.employee.created_at.slice(0, 10);
+    res.json({
+      employee: { id: q.employee.id, name: q.employee.name },
+      period: { from: q.from, to: q.to, today: q.today },
+      meta: q.settings.meta,
+      bonus_base: Number(q.settings.raw.bonus_base) || 0,
+      summary: summarize(rows, {
+        today: q.today,
+        meta: q.settings.meta,
+        bonusBase: Number(q.settings.raw.bonus_base) || 0,
+        workdays: q.settings.workdays,
+        from,
+        to: q.to,
+        isLate: q.isLate,
+      }),
+    });
+  });
+
+  router.get('/days', (req, res) => {
+    const q = reportQuery(req, res);
+    if (!q) return;
+    const rows = loadDayRows(q.db, q.employee.id, q.from, q.to);
+    res.json({
+      employee: { id: q.employee.id, name: q.employee.name },
+      meta: q.settings.meta,
+      days: rows.map((r) => historyRow(r, q)).reverse(),
+    });
+  });
+
+  router.get('/failures', (req, res) => {
+    const q = reportQuery(req, res);
+    if (!q) return;
+    const rows = loadDayRows(q.db, q.employee.id, q.from, q.to);
+    res.json({ employee: { id: q.employee.id, name: q.employee.name }, failures: failureRanking(rows, q.today) });
   });
 
   // ---------- Configurações ----------

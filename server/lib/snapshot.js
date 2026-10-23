@@ -18,6 +18,8 @@ export function buildSnapshot(template) {
       tasks: section.tasks.map((task) => ({
         id: task.id,
         text: String(task.text).replaceAll(FOCUS_PLACEHOLDER, focus),
+        // Texto original, com {foco}: identifica a mesma tarefa em dias com focos diferentes.
+        template_text: String(task.text),
         points: Number(task.points),
         requires_photo: Boolean(task.requires_photo),
         post_slot: task.post_slot ?? null,
