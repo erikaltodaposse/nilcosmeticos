@@ -1,8 +1,31 @@
 import express from 'express';
+import multer from 'multer';
 import { requireAuth, requireRole, sendError } from '../http.js';
 import { isDateKey, todayKey, nowISO, weekdayOf } from '../lib/date.js';
 import { findSnapshotTask } from '../lib/snapshot.js';
 import { getSettings, isWorkday, getDay, ensureDay, markTask, dayView } from '../lib/checklist.js';
+import { ALLOWED_TYPES, MAX_PHOTO_BYTES, sniffImageType, savePhoto, deletePhoto, resolvePhoto } from '../lib/photos.js';
+import { daySummaryText, whatsappLink } from '../lib/summary.js';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_PHOTO_BYTES, files: 1 },
+});
+
+/** Recebe o campo "photo" e traduz os erros do multer para o formato da API. */
+function receivePhoto(req, res, next) {
+  upload.single('photo')(req, res, (err) => {
+    if (err?.code === 'LIMIT_FILE_SIZE') return sendError(res, 413, 'photo_too_large', 'A foto passa de 5 MB.');
+    if (err) return sendError(res, 400, 'invalid_upload', 'Não foi possível receber a foto. Tente de novo.');
+    if (!req.file) return sendError(res, 400, 'photo_missing', 'Envie a foto no campo "photo".');
+    const type = sniffImageType(req.file.buffer);
+    if (!type || !ALLOWED_TYPES[req.file.mimetype]) {
+      return sendError(res, 415, 'invalid_photo_type', 'A foto precisa ser JPEG ou PNG.');
+    }
+    req.photoType = type;
+    next();
+  });
+}
 
 function today(req) {
   return todayKey(req.app.locals.now());
@@ -28,6 +51,10 @@ function payload(req, user, date) {
   const posts = db
     .prepare('SELECT id, slot, channel, product_line, hook, caption, cta FROM posts WHERE weekday = ? AND active = 1 ORDER BY slot, id')
     .all(weekdayOf(date));
+  const view = day ? dayView(db, day, settings) : null;
+  const summaryText = view
+    ? daySummaryText({ date, storeName: settings.storeName, employeeName: user.name, day: view })
+    : null;
   return {
     date,
     weekday: weekdayOf(date),
@@ -41,7 +68,8 @@ function payload(req, user, date) {
       turno_fim: settings.shiftEnd,
       nome_loja: settings.storeName,
     },
-    day: day ? dayView(db, day, settings) : null,
+    day: view,
+    summary: summaryText ? { text: summaryText, whatsapp_url: whatsappLink(summaryText) } : null,
     posts,
   };
 }
@@ -150,18 +178,64 @@ export function dayRouter() {
     return task;
   }
 
+  function findCheck(db, dayId, taskId) {
+    return db.prepare('SELECT * FROM task_checks WHERE day_id = ? AND task_id = ?').get(dayId, taskId) ?? null;
+  }
+
   router.put('/:date/tasks/:taskId', writable, (req, res) => {
     const task = manualTask(req, res);
     if (!task) return;
-    markTask(req.app.locals.db, req.day.id, task.id, nowISO(req.app.locals.now()));
+    const db = req.app.locals.db;
+    if (task.requires_photo && !findCheck(db, req.day.id, task.id)?.photo_path) {
+      return sendError(res, 409, 'photo_required', 'Esta tarefa só é marcada com a foto. Use o botão "Tirar foto".');
+    }
+    markTask(db, req.day.id, task.id, nowISO(req.app.locals.now()));
     res.json(payload(req, req.user, req.params.date));
   });
 
   router.delete('/:date/tasks/:taskId', writable, (req, res) => {
     const task = manualTask(req, res);
     if (!task) return;
-    req.app.locals.db.prepare('DELETE FROM task_checks WHERE day_id = ? AND task_id = ?').run(req.day.id, task.id);
+    const db = req.app.locals.db;
+    const check = findCheck(db, req.day.id, task.id);
+    if (check) {
+      db.prepare('DELETE FROM task_checks WHERE id = ?').run(check.id);
+      deletePhoto(req.app.locals.uploadsDir, check.photo_path);
+    }
     res.json(payload(req, req.user, req.params.date));
+  });
+
+  // Enviar a foto marca a tarefa. Uma nova foto substitui a anterior.
+  router.post('/:date/tasks/:taskId/photo', writable, receivePhoto, (req, res) => {
+    const task = manualTask(req, res);
+    if (!task) return;
+    const db = req.app.locals.db;
+    const { uploadsDir } = req.app.locals;
+    const relative = savePhoto(uploadsDir, req.params.date, req.file.buffer, req.photoType);
+    const existing = findCheck(db, req.day.id, task.id);
+    if (existing) {
+      db.prepare('UPDATE task_checks SET photo_path = ? WHERE id = ?').run(relative, existing.id);
+      deletePhoto(uploadsDir, existing.photo_path);
+    } else {
+      db.prepare('INSERT INTO task_checks (day_id, task_id, done_at, photo_path) VALUES (?, ?, ?, ?)').run(
+        req.day.id, task.id, nowISO(req.app.locals.now()), relative,
+      );
+    }
+    res.json(payload(req, req.user, req.params.date));
+  });
+
+  // Foto servida só com sessão: a funcionária vê as próprias, a gestora vê todas.
+  router.get('/:date/tasks/:taskId/photo', requireAuth(), (req, res) => {
+    const db = req.app.locals.db;
+    const user = targetUser(req);
+    const day = user && getDay(db, user.id, req.params.date);
+    const check = day && findCheck(db, day.id, req.taskId);
+    const file = check && resolvePhoto(req.app.locals.uploadsDir, check.photo_path);
+    if (!file) return sendError(res, 404, 'photo_not_found', 'Foto não encontrada.');
+    res.set('Cache-Control', 'private, max-age=86400');
+    res.sendFile(file, (err) => {
+      if (err && !res.headersSent) sendError(res, 404, 'photo_not_found', 'Foto não encontrada.');
+    });
   });
 
   return router;

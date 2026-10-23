@@ -15,6 +15,7 @@ export function createApp({
   sessionSecret,
   secureCookies = config.isProduction,
   publicDir = config.publicDir,
+  uploadsDir = config.uploadsDir,
   now = () => new Date(),
 }) {
   if (!sessionSecret || sessionSecret.length < 32) {
@@ -24,6 +25,7 @@ export function createApp({
   const app = express();
   app.locals.db = db;
   app.locals.now = now;
+  app.locals.uploadsDir = uploadsDir;
   app.disable('x-powered-by');
   // Em produção o Caddy fica na frente, no mesmo host: confiar só no proxy local para ler o IP real.
   app.set('trust proxy', 'loopback');

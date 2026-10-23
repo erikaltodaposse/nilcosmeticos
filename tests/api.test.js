@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { makeApp, MANAGER, MONDAY, MONDAY_15H, employeeAgent } from './helpers.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { makeApp, MANAGER, MONDAY, MONDAY_15H, employeeAgent, FAKE_JPEG } from './helpers.js';
 import { seed } from '../server/seed.js';
 
 async function loginEmployee(agent, pin = '1234') {
@@ -167,7 +169,14 @@ test('marcar as 14 tarefas fecha 150 pontos', async () => {
   const agent = await employeeAgent(app, request);
   let res = await agent.post(`/api/day/${MONDAY}/checkin`).expect(200);
   for (const task of allTasks(res.body).filter((t) => !t.auto)) {
-    await agent.put(`/api/day/${MONDAY}/tasks/${task.id}`).expect(200);
+    if (task.requires_photo) {
+      await agent
+        .post(`/api/day/${MONDAY}/tasks/${task.id}/photo`)
+        .attach('photo', FAKE_JPEG, { filename: 'limpeza.jpg', contentType: 'image/jpeg' })
+        .expect(200);
+    } else {
+      await agent.put(`/api/day/${MONDAY}/tasks/${task.id}`).expect(200);
+    }
   }
   clock.now = new Date('2026-10-26T22:05:00Z'); // 18:05 em Manaus
   res = await agent.post(`/api/day/${MONDAY}/checkout`).expect(200);
@@ -264,4 +273,91 @@ test('gestora vê o dia da funcionária, mas não registra', async () => {
   assert.equal(res.body.editable, false);
   assert.equal(res.body.day.points.earned, 10);
   await manager.post(`/api/day/${MONDAY}/checkout`).expect(403);
+});
+
+// ---------- Fase 3: fotos e fechamento ----------
+
+function photoTask(body) {
+  return allTasks(body).find((t) => t.requires_photo);
+}
+
+test('tarefa com foto obrigatória não marca sem imagem', async () => {
+  const { app } = makeApp();
+  const agent = await employeeAgent(app, request);
+  const day = await agent.get(`/api/day/${MONDAY}`).expect(200);
+  const res = await agent.put(`/api/day/${MONDAY}/tasks/${photoTask(day.body).id}`);
+  assert.equal(res.status, 409);
+  assert.equal(res.body.error, 'photo_required');
+});
+
+test('upload rejeita arquivo não-imagem', async () => {
+  const { app } = makeApp();
+  const agent = await employeeAgent(app, request);
+  const day = await agent.get(`/api/day/${MONDAY}`).expect(200);
+  const url = `/api/day/${MONDAY}/tasks/${photoTask(day.body).id}/photo`;
+
+  const text = await agent.post(url).attach('photo', Buffer.from('não sou imagem'), { filename: 'a.txt', contentType: 'text/plain' });
+  assert.equal(text.status, 415);
+  assert.equal(text.body.error, 'invalid_photo_type');
+
+  // Declarado como JPEG, mas o conteúdo não é.
+  const disguised = await agent.post(url).attach('photo', Buffer.from('%PDF-1.4 falso'), { filename: 'a.jpg', contentType: 'image/jpeg' });
+  assert.equal(disguised.status, 415);
+
+  const empty = await agent.post(url);
+  assert.equal(empty.status, 400);
+
+  const big = Buffer.concat([FAKE_JPEG, Buffer.alloc(5 * 1024 * 1024)]);
+  const tooBig = await agent.post(url).attach('photo', big, { filename: 'grande.jpg', contentType: 'image/jpeg' });
+  assert.equal(tooBig.status, 413);
+});
+
+test('foto marca a tarefa, fica fora da pasta pública e só sai com sessão', async () => {
+  const { app, uploadsDir } = makeApp();
+  const agent = await employeeAgent(app, request);
+  const day = await agent.get(`/api/day/${MONDAY}`).expect(200);
+  const task = photoTask(day.body);
+  const url = `/api/day/${MONDAY}/tasks/${task.id}/photo`;
+
+  const res = await agent.post(url).attach('photo', FAKE_JPEG, { filename: 'x.jpg', contentType: 'image/jpeg' }).expect(200);
+  const marked = allTasks(res.body).find((t) => t.id === task.id);
+  assert.equal(marked.done, true);
+  assert.equal(marked.has_photo, true);
+  assert.equal(res.body.day.points.earned, 20);
+
+  const files = fs.readdirSync(path.join(uploadsDir, '2026-10'));
+  assert.equal(files.length, 1);
+  assert.match(files[0], /^[0-9a-f-]{36}\.jpg$/);
+
+  await request(app).get(url).expect(401);
+  const own = await agent.get(url).expect(200);
+  assert.equal(own.headers['content-type'], 'image/jpeg');
+
+  const manager = request.agent(app);
+  await manager.post('/api/auth/login/password').send(MANAGER).expect(200);
+  await manager.get(url).expect(200);
+
+  // Nova foto substitui a anterior; desmarcar apaga o arquivo.
+  await agent.post(url).attach('photo', FAKE_JPEG, { filename: 'y.jpg', contentType: 'image/jpeg' }).expect(200);
+  assert.equal(fs.readdirSync(path.join(uploadsDir, '2026-10')).length, 1);
+  await agent.delete(`/api/day/${MONDAY}/tasks/${task.id}`).expect(200);
+  assert.equal(fs.readdirSync(path.join(uploadsDir, '2026-10')).length, 0);
+  await agent.get(url).expect(404);
+});
+
+test('fechamento traz resumo e link do WhatsApp', async () => {
+  const { app, clock } = makeApp();
+  const agent = await employeeAgent(app, request);
+  await agent.post(`/api/day/${MONDAY}/checkin`).expect(200);
+  clock.now = new Date('2026-10-26T22:20:00Z'); // 18:20
+  await agent.post(`/api/day/${MONDAY}/checkout`).expect(200);
+  const res = await agent.post(`/api/day/${MONDAY}/close`).expect(200);
+  const { text, whatsapp_url: url } = res.body.summary;
+  assert.match(text, /Ana · 26\/10\/2026/);
+  assert.match(text, /Entrada: 15:00/);
+  assert.match(text, /Saída: 18:20 \(depois da tolerância\)/);
+  assert.match(text, /Pontos: 25 de 150/);
+  assert.match(text, /Não cumpridas:\n- Abrir a loja/);
+  assert.ok(url.startsWith('https://wa.me/?text='));
+  assert.equal(decodeURIComponent(url.slice('https://wa.me/?text='.length)), text);
 });
