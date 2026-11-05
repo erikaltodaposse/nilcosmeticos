@@ -115,3 +115,25 @@ test('mesma tarefa com focos diferentes conta como uma só no ranking', async ()
   assert.equal(ranking[0].missed, 2);
   assert.equal(taskKey(rows[1].snapshot.sections[0].tasks[1]), 'Limpeza final: hall e entrada');
 });
+
+test('funcionária vê a própria evolução, sem valor em reais; gestora não usa esta rota', async () => {
+  const { app, employee, manager, clock } = await scenario();
+  const { at } = await import('./scenario.js');
+  clock.now = at('2026-11-02', '18:00');
+  const week = await employee.get('/api/me/progress').expect(200);
+  assert.equal(week.body.days, 7);
+  // 27/10 a 02/11: 27, 28 e 30 encerrados.
+  assert.deepEqual(week.body.series.map((d) => d.points), [120, 125, 120]);
+  assert.equal(week.body.goal_days, 0);
+  assert.equal(week.body.streak, 0);
+  assert.equal(week.body.best_day.points, 125);
+  assert.equal(week.body.bonus_value, undefined);
+
+  const month = await employee.get('/api/me/progress?days=30').expect(200);
+  assert.equal(month.body.series.length, 4);
+  assert.equal(month.body.goal_days, 1);
+  assert.equal(month.body.tier.id, 'bronze');
+  assert.deepEqual(month.body.next_tier, { id: 'prata', label: 'Prata', missing_pct: 3 });
+  assert.ok(app);
+  await manager.get('/api/me/progress').expect(403);
+});

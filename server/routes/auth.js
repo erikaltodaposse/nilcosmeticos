@@ -11,8 +11,11 @@ import {
   publicUser,
   verifySecret,
 } from '../lib/auth.js';
-import { ah, requireAuth, sendError } from '../http.js';
-import { todayKey } from '../lib/date.js';
+import { ah, requireAuth, requireRole, sendError } from '../http.js';
+import { todayKey, addDays } from '../lib/date.js';
+import { getSettings, isLateCheckout } from '../lib/checklist.js';
+import { loadDayRows, summarize } from '../lib/report.js';
+import { goalStreak, nextTier, bestDay } from '../lib/progress.js';
 
 export function authRouter({ secureCookies }) {
   const router = express.Router();
@@ -102,5 +105,40 @@ export function meRouter() {
   router.get('/', requireAuth({ allowPendingPin: true }), (req, res) => {
     res.json({ user: publicUser(req.user), today: todayKey(req.app.locals.now()) });
   });
+
+  // "Minha evolução": a funcionária vê só os próprios números, dos últimos 7 ou 30 dias.
+  router.get('/progress', ...requireRole('employee'), ah(async (req, res) => {
+    const db = req.app.locals.db;
+    const days = req.query.days === '30' ? 30 : 7;
+    const today = todayKey(req.app.locals.now());
+    const from = addDays(today, -(days - 1));
+    const settings = await getSettings(db);
+    const rows = await loadDayRows(db, req.user.id, from, today);
+    const s = summarize(rows, {
+      today,
+      meta: settings.meta,
+      bonusBase: 0,
+      workdays: settings.workdays,
+      from: from < req.user.created_at.slice(0, 10) ? req.user.created_at.slice(0, 10) : from,
+      to: today,
+      isLate: (row) => isLateCheckout(row.check_out_at, settings),
+    });
+    const best = bestDay(s.series);
+    res.json({
+      days,
+      meta: settings.meta,
+      worked_days: s.worked_days,
+      average_points: s.average_points,
+      series: s.series.map((d) => ({ date: d.date, points: d.points })),
+      tasks: s.tasks,
+      punctuality: s.punctuality,
+      goal_days: s.series.filter((d) => d.points >= settings.meta).length,
+      streak: goalStreak(s.series, settings.workdays, settings.meta),
+      best_day: best ? { date: best.date, points: best.points } : null,
+      // Só a faixa, sem valor em reais.
+      tier: s.tier ? { id: s.tier.id, label: s.tier.label } : null,
+      next_tier: nextTier(s.adherence),
+    });
+  }));
   return router;
 }

@@ -78,3 +78,14 @@ test('adesão ignora dias sem check e aplica as faixas', async () => {
   assert.equal(adherence([], 150).ratio, null);
   assert.equal(bonusTier(null), null);
 });
+
+test('sequência de metas pula fim de semana e quebra com falta ou dia abaixo da meta', async () => {
+  const { goalStreak } = await import('../server/lib/progress.js');
+  const wd = [1, 2, 3, 4, 5];
+  const s = (pairs) => pairs.map(([date, points]) => ({ date, points }));
+  // sexta 30/10 e segunda 2/11 batendo a meta: 2 seguidos, o fim de semana não quebra.
+  assert.equal(goalStreak(s([['2026-10-29', 100], ['2026-10-30', 150], ['2026-11-02', 150]]), wd, 150), 2);
+  // falta na quinta 29 quebra a sequência.
+  assert.equal(goalStreak(s([['2026-10-28', 150], ['2026-10-30', 150]]), wd, 150), 1);
+  assert.equal(goalStreak(s([['2026-10-30', 149]]), wd, 150), 0);
+});
