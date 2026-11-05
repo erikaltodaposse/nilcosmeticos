@@ -131,6 +131,9 @@ Cada linha: decisão — justificativa.
 
 73. **Gráficos no painel** (pedido do Erik, 23/10), em SVG próprio, sem biblioteca: colunas de pontos por dia com a linha da meta, pizza de tarefas feitas e pizza de feitas no horário. Cada gráfico tem uma frase simples ("De cada 10 tarefas, ela fez 9"), números escritos e legenda, para não depender só da cor.
 
+74. **Gestoras cadastradas pelo app** (Ajustes, cartão Gestoras): senha com no mínimo 8 caracteres, guardada só como hash; remover o acesso encerra as sessões; ninguém remove o próprio acesso.
+75. **"Minha evolução" para a funcionária** (pedido do Erik, 05/11): aba ao lado de "Hoje", com os mesmos gráficos simples do painel (7 ou 30 dias), conquistas (dias na meta, dias seguidos, melhor dia, média) e a faixa de bônus **sem valor em reais**. Rota `GET /api/me/progress`, só para a funcionária e só com os dados dela.
+
 ## 6. Pendências
 
 - **Protótipo `checkpoint-nil/index.html` não foi enviado.** Sem ele faltam: os 19 registros do roteiro de posts (tabela `posts` está vazia), subtítulos das seções e referências de texto e layout. Quando chegar, vai para `referencia/prototipo.html`.

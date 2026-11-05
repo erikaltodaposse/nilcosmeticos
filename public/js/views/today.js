@@ -77,7 +77,7 @@ function progressRing(earned, meta) {
   );
 }
 
-export function todayView({ user, date, nfcToken, onLogout }) {
+export function todayView({ user, date, nfcToken, onLogout, nav }) {
   let state = null;
   let pending = false;
   let closing = false;
@@ -115,6 +115,7 @@ export function todayView({ user, date, nfcToken, onLogout }) {
       subtitle: `Oi, ${user.name.split(' ')[0]}! ${formatDateKey(date).replace(/^./, (c) => c.toUpperCase())}`,
       actions: h('button', { class: 'btn btn-ghost', type: 'button', onclick: onLogout }, 'Sair'),
     }),
+    nav,
     body,
   );
 

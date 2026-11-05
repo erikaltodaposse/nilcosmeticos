@@ -30,6 +30,7 @@ async function call(method, url, body) {
 
 export const api = {
   me: () => call('GET', '/api/me'),
+  progress: (days) => call('GET', `/api/me/progress?days=${days}`),
   loginPin: (pin) => call('POST', '/api/auth/login/pin', { pin }),
   loginPassword: (email, password) => call('POST', '/api/auth/login/password', { email, password }),
   logout: () => call('POST', '/api/auth/logout'),

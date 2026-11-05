@@ -2,7 +2,7 @@ import { api } from './api.js';
 import { loginView } from './views/login.js';
 import { changePinView } from './views/change-pin.js';
 import { managerView } from './views/manager.js';
-import { todayView } from './views/today.js';
+import { employeeView } from './views/employee.js';
 
 const root = document.getElementById('app');
 
@@ -36,7 +36,10 @@ function takeNfc() {
 function route(user) {
   if (!user) return mount(loginView({ onLogin: (u) => refresh(u) }), 'Entrar');
   if (user.must_change_pin) return mount(changePinView({ user, onDone: (u) => refresh(u), onLogout: logout }), 'Criar PIN');
-  if (user.role === 'employee') return mount(todayView({ user, date: today, nfcToken: takeNfc(), onLogout: logout }), 'Hoje');
+  if (user.role === 'employee') {
+    const setTitle = (title) => { document.title = `${title} · Checkpoint Nil`; };
+    return mount(employeeView({ user, today, nfcToken: takeNfc(), onLogout: logout, onTitle: setTitle }), 'Hoje');
+  }
   takeNfc();
   mount(managerView({ user, today, onLogout: logout }), 'Gestão');
 }
